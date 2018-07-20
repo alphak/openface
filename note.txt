@@ -1,0 +1,19 @@
+#reinstall openface after modify some sourecode
+sudo python2 setu.py install
+#get openface models
+models/get-models.sh
+#crop data
+./util/align-dlib.py ./testdata/ align outerEyesAndNose ./testdata_crop/
+
+#gen feature of faces
+./batch-represent/main.lua -outDir ./testdata_features -data ./testdata_crop/
+
+#train
+./demos/classifier.py train ./testdata_features/
+
+
+#reconfg
+./demos/classifier.py infer ./testdata_features/classifier.pkl ws_test_data/{test6,test7}/*.jpg
+
+#webcam 
+./demos/classifier_webcam.py ./testdata_features/classifier.pkl

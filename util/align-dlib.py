@@ -43,7 +43,7 @@ def write(vals, fName):
 
 def computeMeanMain(args):
     align = openface.AlignDlib(args.dlibFacePredictor)
-
+    
     imgs = list(iterImgs(args.inputDir))
     if args.numImages > 0:
         imgs = random.sample(imgs, args.numImages)
