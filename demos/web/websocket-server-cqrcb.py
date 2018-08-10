@@ -372,9 +372,9 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
 def mkdir(folderName):
     current_position = "../../"
     foldername = str(current_position)+str(folderName)+"/"
-    isCreated = os.path.exists(foldernames)
+    isCreated = os.path.exists(foldername)
     if not isCreated:
-        os.makedirs(foldernames)
+        os.makedirs(foldername)
         return True
     else:
         return False

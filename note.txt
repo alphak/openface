@@ -1,5 +1,5 @@
 #reinstall openface after modify some sourecode
-sudo python2 setu.py install
+sudo python2 setup.py install
 #get openface models
 models/get-models.sh
 #crop data

@@ -78,9 +78,10 @@ limitations under the License.
                 </ul>
                 -->
 
-            <h5>输入采集人脸的员工号,点击提交开始存储</h5>
+            <h5>输入采集人脸的员工号,点击提交发送</h5>
             <div class="input-group addPersonDiv">
-                <input type="text" class="form-control" id="addPersonTxt">
+                <input type="text" maxlength="7" onkeyup="value=value.replace(/[^\d]/g,'')" onbeforepaste="clipboardData.setData('text',clipboardData.getData('text').replace(/[^\d]/g,''))" 
+                    class="form-control" id="addPersonTxt">
                 <span class="input-group-btn">
                     <button class="btn btn-default" type="button" id="addPersonBtn">
                         提交
@@ -131,24 +132,24 @@ limitations under the License.
             <script id="peopleTableTmpl" type="text/x-handlebars-template">
                 <thead>
                     <tr>
-                        <th></th>
+                        <th>{{employeeId}}</th>
                         <!--    <th>Unknown</th> -->
-                        {{#each people}}
+                    <!--    {{#each people}}
                         <th>{{this}}</th>
-                        {{/each}}
+                        {{/each}}-->
                     </tr>
                 </thead>
 
                 <tbody>
-                    {{#each images}}
-                    <tr id="ppl_row_{{this.hash}}">
+                    {{#each imageCache}}
+                    <tr id="ppl_row_{{this.seq}}">
                         <td valign='middle'>
-                            <a href="javascript:removeImage('{{this.hash}}')" class='remove'>
+                            <a href="javascript:removeImage('{{this.seq}}')" class='remove'>
                                 × ×
                             </a>
                             </font>
                             <!--<img src="{{this.image}}" />-->
-                            <img src="{{this}}" />
+                            <img src="{{this.data}}" />
                         </td>
                         <!--<td>
                             <input type='radio' name='ppl_radio_{{this.hash}}' value="-1" {{#ifEq identity -1}} checked {{/ifEq}} onClick="updateIdentity('{{this.hash}}', -1)">
@@ -196,15 +197,17 @@ limitations under the License.
     var peopleTableTmpl = Handlebars.compile($("#peopleTableTmpl").html());
     var defaultTok = 1,
         defaultNumNulls = 20,
-        defaultImgThreshold = 60;//the maxmum img number of a single person
+        defaultDelayNum = 7;
+        defaultImgThreshold = 50;//the maxmum img number of a single person
     var tok = defaultTok,
         people = [],
-        employeeId,//current employee's id
         defaultPerson = -1,
         images = [],
         training = false,
-        sendingImgs = false, //is sending imgs to server
-        serverFolderName = "";
+        employeeId = "",//current employee's id
+        imageCache = [],//emplid,seq,data
+        seqNum = 0,
+        delayNum = 7;
     var numNulls, sentTimes, receivedTimes;
     var socket, socketName;
 

@@ -27,7 +27,8 @@ window.URL = window.URL ||
     window.msURL ||
     window.mozURL;
 /*
-hwd:here we define a function of our own in jquery's name space "fn" which called "pressEnter",
+hwd:here we define a function of our own in jquery's name space "fn" ,
+whose name is "pressEnter",
 */
 // http://stackoverflow.com/questions/6524288
 $.fn.pressEnter = function (fn) {
@@ -51,9 +52,16 @@ function registerHbarsHelpers() {
         return options.inverse(this);
     });
 }
-
-function addimg() {
-    if (tok++ > 20) {
+function debugPrintImageCache(){
+    for(var i =0;i < imageCache.length;i++)
+                console.log(imageCache[i].seq);
+}
+function capImgs() {
+    if (delayNum-- < 1) {
+        if(imageCache.length >= defaultImgThreshold) {
+            debugPrintImageCache();
+            return;
+        }
         var canvas = document.createElement('canvas');
         canvas.width = vid.width;
         canvas.height = vid.height;
@@ -62,21 +70,14 @@ function addimg() {
         var apx = cc.getImageData(0, 0, vid.width, vid.height);
 
         var dataURL = canvas.toDataURL('image/jpeg', 1.0);
-        images.push(dataURL);
+        imageCache.push({            
+            seq: seqNum++,
+            data: dataURL
+        });
     }
-    $("#addPersonTxt").val(tok);
-    var context = {
-        people: people,
-        images: images
-    };
-    $("#peopleTable").html(peopleTableTmpl(context));
-
-    var context = {
-        people: people
-    };
-    $("#peopleInfo").html(getPeopleInfoHtml());
+    redrawPeople();
     setTimeout(function () {
-        requestAnimFrame(addimg)
+        requestAnimFrame(capImgs)
     }, 250);
 }
 
@@ -85,7 +86,7 @@ function sendFrameLoop() {
         !vidReady || numNulls != defaultNumNulls) {
         return;
     }
-    if (sendImgs == false) return; //server must have successfully create a folder ""
+   
     if (tok > 0) {
         var canvas = document.createElement('canvas');
         canvas.width = vid.width;
@@ -111,39 +112,40 @@ function sendFrameLoop() {
 
 
 function getPeopleInfoHtml() {
-    var info = {
-        '-1': 0
-    };
-    var len = people.length;
-    for (var i = 0; i < len; i++) {
-        info[i] = 0;
-    }
+    // var info = {
+    //     '-1': 0
+    // };
+    // var len = people.length;
+    // for (var i = 0; i < len; i++) {
+    //     info[i] = 0;
+    // }
 
-    var len = images.length;
-    for (var i = 0; i < len; i++) {
-        id = images[i].identity;
-        info[id] += 1;
-    }
+    // var len = images.length;
+    // for (var i = 0; i < len; i++) {
+    //     id = images[i].identity;
+    //     info[id] += 1;
+    // }
 
-    var h = "<li><b>Unknown:</b> " + info['-1'] + "</li>";
-    var len = people.length;
-    for (var i = 0; i < len; i++) {
-        h += "<li><b>" + people[i] + ":</b> " + info[i] + "</li>";
-    }
+    // var h = "<li><b>Unknown:</b> " + info['-1'] + "</li>";
+    // var len = people.length;
+    // for (var i = 0; i < len; i++) {
+    //     h += "<li><b>" + people[i] + ":</b> " + info[i] + "</li>";
+    // }
+    var h = "<li><b>已采集图像数量:</b> " + imageCache.length + "</li>";
     return h;
 }
 
 function redrawPeople() {
     var context = {
-        people: people,
-        images: images
+        employeeId: employeeId,
+        imageCache: imageCache
     };
     $("#peopleTable").html(peopleTableTmpl(context));
 
-    var context = {
-        people: people
-    };
-    $("#defaultPersonDropdown").html(defaultPersonTmpl(context));
+    // var context = {
+    //     people: people
+    // };
+    //$("#defaultPersonDropdown").html(defaultPersonTmpl(context));
 
     $("#peopleInfo").html(getPeopleInfoHtml());
 }
@@ -188,6 +190,15 @@ function sendState() {
         'images': images,
         'people': people,
         'training': training
+    };
+    socket.send(JSON.stringify(msg));
+}
+
+function sendImageCache() {
+    var msg = {
+        'type': 'STORE_IMAGES',
+        'images': imageCache,
+        'employeeId': employeeId
     };
     socket.send(JSON.stringify(msg));
 }
@@ -288,7 +299,7 @@ function umSuccess(stream) {
     vidReady = true;
     //sendFrameLoop();
 
-    addimg(); //for test
+    capImgs(); //for test
     //redrawPeople();
 }
 
@@ -311,21 +322,21 @@ function umSuccess(stream) {
 
 
 function addPersonCqrcbCallback(el) {
-    /*   var newPerson = $("#addPersonTxt").val();
-       if (newPerson == "" || serverFolderName != "") return;
-       serverFolderName == newPerson;
-       $("#addPersonTxt").val("");
-
-       if (socket != null) {
-           var msg = {
-               'type': 'CREATE_FOLDER',
-               'val': newPerson
-           };
-           socket.send(JSON.stringify(msg));
-       }*/
-    //add img to images then display
-    //addimg();
-    redrawPeople();
+    var textValue = document.getElementById("addPersonTxt").value;
+    if (textValue == "") {
+        alert("员工号输入框不能为空！");
+        return;
+    }
+    if (textValue.length != 7) {
+        alert("请输入7位数字的员工号！");
+        return;
+    }
+    if(imageCache.length < 50){
+        alert("采集图像数不足50张，不能发送！");
+        return;
+    }
+    employeeId = textValue;
+    sendImageCache();//send server the images
 }
 
 /*function trainingChkCallback() {
@@ -366,6 +377,18 @@ function findImageByHash(hash) {
     return -1;
 }
 
+function findImageBySequ(_seq) {
+    var imgIdx = 0;
+    var len = imageCache.length;
+    for (imgIdx = 0; imgIdx < len; imgIdx++) {
+        if (imageCache[imgIdx].seq == _seq) {
+            console.log("  + Image found.");
+            return imgIdx;
+        }
+    }
+    return -1;
+}
+
 function updateIdentity(hash, idx) {
     var imgIdx = findImageByHash(hash);
     if (imgIdx >= 0) {
@@ -379,17 +402,18 @@ function updateIdentity(hash, idx) {
     }
 }
 
-function removeImage(hash) {
-    console.log("Removing " + hash);
-    var imgIdx = findImageByHash(hash);
+function removeImage(_seq) {
+    console.log("Removing " + _seq);
+    var imgIdx = findImageBySequ(_seq);
     if (imgIdx >= 0) {
-        images.splice(imgIdx, 1);
-        redrawPeople();
-        var msg = {
-            'type': 'REMOVE_IMAGE',
-            'hash': hash
-        };
-        socket.send(JSON.stringify(msg));
+        imageCache.splice(imgIdx, 1);
+        delayNum = defaultDelayNum;
+        capImgs();
+        // var msg = {
+        //     'type': 'REMOVE_IMAGE',
+        //     'hash': hash
+        // };
+        // socket.send(JSON.stringify(msg));
     }
 }
 
