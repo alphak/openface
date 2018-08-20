@@ -147,15 +147,35 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                 print("Image not found.")
         elif msg['type'] == 'REQ_TSNE':
             self.sendTSNE(msg['people'])
-        elif msg['type'] == 'CREATE_FOLDER':
-            isSuc = mkdir(msg['val'])
-            if msg['val'] != "":
-                self.serverFolderName = msg['val']
-            msg = {
-                "type": "CREATE_FOLDER",
+        elif msg['type'] == 'STORE_IMAGES':
+            isSuc = mkdir(msg['employeeId'])
+            if isSuc == True:
+                self.serverFolderName = msg['employeeId']
+                emplId = msg['employeeId']
+                #store images in employee's folder
+                for jsImage in msg['images']:
+                    dataURL = jsImage['data']
+                    dataSeq = jsImage['seq']
+                    head = "data:image/jpeg;base64,"
+                    assert(dataURL.startswith(head))
+                    imgdata = base64.b64decode(dataURL[len(head):])
+                    imgF = StringIO.StringIO()
+                    imgF.write(imgdata)
+                    imgF.seek(0)
+                    img = Image.open(imgF)
+
+                    buf = np.fliplr(np.asarray(img))
+                    rgbFrame = np.zeros((300, 400, 3), dtype=np.uint8)
+                    rgbFrame[:, :, 0] = buf[:, :, 2]
+                    rgbFrame[:, :, 1] = buf[:, :, 1]
+                    rgbFrame[:, :, 2] = buf[:, :, 0]
+                    rgbFrame[:, :, 2] = buf[:, :, 0]
+                    cv2.imwrite("../../cqrcb_crop/"+emplId+"/"+dataSeq+".jpg",rgbFrame)
+                msg = {
+                "type": "STORE_IMAGES",
                 "result": isSuc
-            }
-            self.sendMessage(json.dumps(msg))
+                }
+                self.sendMessage(json.dumps(msg))
         else:
             print("Warning: Unknown message type: {}".format(msg['type']))
 
@@ -370,7 +390,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
 
 
 def mkdir(folderName):
-    current_position = "../../"
+    current_position = "../../cqrcb_empl/"
     foldername = str(current_position)+str(folderName)+"/"
     isCreated = os.path.exists(foldername)
     if not isCreated:
