@@ -1,5 +1,5 @@
 #!/usr/bin/env python2
-#
+# #
 # Copyright 2015-2016 Carnegie Mellon University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -99,7 +99,6 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         self.training = True
         self.people = []
         self.svm = None
-        self.serverFolderName = ""
         if args.unknown:
             self.unknownImgs = np.load("./examples/web/unknown.npy")
 
@@ -148,14 +147,14 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         elif msg['type'] == 'REQ_TSNE':
             self.sendTSNE(msg['people'])
         elif msg['type'] == 'STORE_IMAGES':
-            isSuc = mkdir(msg['employeeId'])
-            if isSuc == True:
-                self.serverFolderName = msg['employeeId']
-                emplId = msg['employeeId']
+            emplId = msg['employeeId']
+            isSuc = mkdir(emplId)
+            if isSuc:              
                 #store images in employee's folder
                 for jsImage in msg['images']:
                     dataURL = jsImage['data']
                     dataSeq = jsImage['seq']
+                    print("image of {} with seq number {} will be stored.".format(emplId,dataSeq))
                     head = "data:image/jpeg;base64,"
                     assert(dataURL.startswith(head))
                     imgdata = base64.b64decode(dataURL[len(head):])
@@ -170,12 +169,15 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     rgbFrame[:, :, 1] = buf[:, :, 1]
                     rgbFrame[:, :, 2] = buf[:, :, 0]
                     rgbFrame[:, :, 2] = buf[:, :, 0]
-                    cv2.imwrite("../../cqrcb_crop/"+emplId+"/"+dataSeq+".jpg",rgbFrame)
+                    cv2.imwrite("../cqrcb_empl/"+str(emplId) +
+                                "/"+str(dataSeq)+".jpg", rgbFrame)
                 msg = {
-                "type": "STORE_IMAGES",
-                "result": isSuc
+                    "type": "STORE_IMAGES",
+                    "result": isSuc
                 }
                 self.sendMessage(json.dumps(msg))
+            else:
+                print("Warning:message type: {},message content is irrlegal".format(msg['type']))
         else:
             print("Warning: Unknown message type: {}".format(msg['type']))
 
@@ -389,15 +391,20 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
             self.sendMessage(json.dumps(msg))
 
 
-def mkdir(folderName):
-    current_position = "../../cqrcb_empl/"
-    foldername = str(current_position)+str(folderName)+"/"
-    isCreated = os.path.exists(foldername)
-    if not isCreated:
-        os.makedirs(foldername)
-        return True
-    else:
+def mkdir(emplid):
+    print("empl id is {}.".format(emplid))
+    print("current file dir is {} .".format(fileDir))
+    if not emplid:
         return False
+    else:
+        foldername = "../cqrcb_empl/"+str(emplid)
+        isCreated = os.path.exists(foldername)
+        if not isCreated:
+            os.makedirs(foldername)
+            return True
+        else:
+            print("folder has already existed!")
+            return True
 
 
 def main(reactor):

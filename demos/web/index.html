@@ -32,24 +32,25 @@ limitations under the License.
     <div class="container">
         <div class="header">
             <ul class='tabs'>
-                <li class='tab-link' data-tab='tab-preview' id='tab-preview-button'>
+                <li class='tab-link current' data-tab='tab-preview' id='tab-preview-button'>
                     采集人脸
                 </li>
-                <li class='tab-link current' data-tab='tab-annotated' id='tab-annotated-button'>
+                <!--<li class='tab-link current' data-tab='tab-annotated' id='tab-annotated-button'>
                     识别人脸
-                </li>
+                </li>-->
             </ul>
-            <div id='tab-preview' class='tab-content'>
+            <div id='tab-preview' class='tab-content current'>
                 <video id="videoel" width="400" height="300" muted autoplay preload="auto" loop></video>
             </div>
-            <div id='tab-annotated' class='tab-content current'>
+            <!--<div id='tab-annotated' class='tab-content current'>
                 <div id="detectedFaces"></div>
-            </div>
+            </div>-->
         </div>
         <div class="content">
-            <h2>People in Video</h2>
-            <div id="peopleInVideo"></div>
-
+            <!--<h2>People in Video</h2>
+            <div id="peopleInVideo"></div>-->
+            <h2>Send Result</h2>
+            <div id="SendResult"></div>
             <h2>Servers:
                 <span id="serverStatus"></span>
             </h2>
@@ -212,7 +213,7 @@ limitations under the License.
     var socket, socketName;
 
     //$("#trainingChk").bootstrapToggle('off');
-    $("#peopleInVideo").html("");
+    //$("#peopleInVideo").html("");
 
     if (navigator.mediaDevices.getUserMedia) {
         var videoSelector = {
@@ -227,7 +228,7 @@ limitations under the License.
         alert("No webcam detected.");
     }
 
-    //$("#serverBtn.btn-group > .btn").click(changeServerCallback);
+    $("#serverBtn.btn-group > .btn").click(changeServerCallback);
     //$("#addPersonBtn").click(addPersonCallback);
     //$("#addPersonTxt").pressEnter(addPersonCallback);
     //$("#trainingChk").change(trainingChkCallback);

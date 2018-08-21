@@ -226,9 +226,10 @@ function createSocket(address, name) {
             receivedTimes.push(new Date());
             numNulls++;
             if (numNulls == defaultNumNulls) {
-                updateRTT();
-                sendState();
-                sendFrameLoop();
+                //updateRTT();
+                //sendState();
+                //sendFrameLoop();
+                capImgs();
             } else {
                 socket.send(JSON.stringify({
                     'type': 'NULL'
@@ -271,8 +272,15 @@ function createSocket(address, name) {
             BootstrapDialog.show({
                 message: "<img src='" + j['content'] + "' width='100%'></img>"
             });
-        } else if (j.type == "CREATE_FOLDER") {
-            sendImgs = j.result;
+        } else if (j.type == "STORE_IMAGES") {
+            var h;
+            if (j.result) {
+                h = "Images have sent to server and saved as .jpg files successfully:!!!";
+            }else{
+                h = "Images send error:!!!";
+            }
+            $("#SendResult").html(h);
+            console.log("Image save status: " + j.result);
         } else {
             console.log("Unrecognized message type: " + j.type);
         }
@@ -299,7 +307,7 @@ function umSuccess(stream) {
     vidReady = true;
     //sendFrameLoop();
 
-    capImgs(); //for test
+    //capImgs(); //for test
     //redrawPeople();
 }
 
@@ -331,12 +339,13 @@ function addPersonCqrcbCallback(el) {
         alert("请输入7位数字的员工号！");
         return;
     }
-    if(imageCache.length < 50){
+    if(imageCache.length < defaultImgThreshold){
         alert("采集图像数不足50张，不能发送！");
         return;
     }
     employeeId = textValue;
     sendImageCache();//send server the images
+    redrawPeople();
 }
 
 /*function trainingChkCallback() {
