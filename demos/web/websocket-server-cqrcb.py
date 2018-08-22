@@ -14,7 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
+
+start = time.time()
+
 import os
+import pickle
 import sys
 fileDir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(fileDir, "..", ".."))
@@ -35,6 +40,7 @@ import imagehash
 import json
 from PIL import Image
 import numpy as np
+np.set_printoptions(precision=2)
 import os
 import StringIO
 import urllib
@@ -44,6 +50,7 @@ from sklearn.decomposition import PCA
 from sklearn.grid_search import GridSearchCV
 from sklearn.manifold import TSNE
 from sklearn.svm import SVC
+from sklearn.mixture import GMM
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -55,6 +62,7 @@ import openface
 modelDir = os.path.join(fileDir, '..', '..', 'models')
 dlibModelDir = os.path.join(modelDir, 'dlib')
 openfaceModelDir = os.path.join(modelDir, 'openface')
+classifierFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_feat')
 # For TLS connections
 tls_crt = os.path.join(fileDir, 'tls', 'server.crt')
 tls_key = os.path.join(fileDir, 'tls', 'server.key')
@@ -71,13 +79,21 @@ parser.add_argument('--unknown', type=bool, default=False,
                     help='Try to predict unknown people')
 parser.add_argument('--port', type=int, default=9000,
                     help='WebSocket Port')
+parser.add_argument('--width', type=int, default=400)
+parser.add_argument('--height', type=int, default=300)
+parser.add_argument('--threshold', type=float, default=0.7)
+parser.add_argument(
+        '--classifierModel',
+        type=str,
+        default=os.path.join(classifierFilelDir, 'classifier.pkl'),
+        help='The Python pickle representing the classifier. This is NOT the Torch network model, which can be set with --networkModel.')
+parser.add_argument('--verbose', action='store_true')
 
 args = parser.parse_args()
 
 align = openface.AlignDlib(args.dlibFacePredictor)
 net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,
                               cuda=args.cuda)
-
 
 class Face:
 
@@ -95,16 +111,16 @@ class Face:
 class OpenFaceServerProtocol(WebSocketServerProtocol):
     def __init__(self):
         super(OpenFaceServerProtocol, self).__init__()
-        self.images = {}
-        self.training = True
-        self.people = []
-        self.svm = None
+        # self.images = {}
+        # self.training = True
+        # self.people = []
+        # self.svm = None
         if args.unknown:
             self.unknownImgs = np.load("./examples/web/unknown.npy")
 
     def onConnect(self, request):
         print("Client connecting: {0}".format(request.peer))
-        self.training = True
+        # self.training = True
 
     def onOpen(self):
         print("WebSocket connection open.")
@@ -114,38 +130,11 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         msg = json.loads(raw)
         print("Received {} message of length {}.".format(
             msg['type'], len(raw)))
-        if msg['type'] == "ALL_STATE":
-            self.loadState(msg['images'], msg['training'], msg['people'])
-        elif msg['type'] == "NULL":
+        if msg['type'] == "NULL":
             self.sendMessage('{"type": "NULL"}')
         elif msg['type'] == "FRAME":
-            self.processFrame(msg['dataURL'], msg['identity'])
-            self.sendMessage('{"type": "PROCESSED"}')
-        elif msg['type'] == "TRAINING":
-            self.training = msg['val']
-            if not self.training:
-                self.trainSVM()
-        elif msg['type'] == "ADD_PERSON":
-            self.people.append(msg['val'].encode('ascii', 'ignore'))
-            print(self.people)
-        elif msg['type'] == "UPDATE_IDENTITY":
-            h = msg['hash'].encode('ascii', 'ignore')
-            if h in self.images:
-                self.images[h].identity = msg['idx']
-                if not self.training:
-                    self.trainSVM()
-            else:
-                print("Image not found.")
-        elif msg['type'] == "REMOVE_IMAGE":
-            h = msg['hash'].encode('ascii', 'ignore')
-            if h in self.images:
-                del self.images[h]
-                if not self.training:
-                    self.trainSVM()
-            else:
-                print("Image not found.")
-        elif msg['type'] == 'REQ_TSNE':
-            self.sendTSNE(msg['people'])
+            self.processFrame(msg['dataURL'])
+            self.sendMessage('{"type": "PROCESSED"}')                
         elif msg['type'] == 'STORE_IMAGES':
             emplId = msg['employeeId']
             isSuc = mkdir(emplId)
@@ -177,109 +166,14 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                 }
                 self.sendMessage(json.dumps(msg))
             else:
-                print("Warning:message type: {},message content is irrlegal".format(msg['type']))
+                print("Warning:message type: {},message content is illegal".format(msg['type']))
         else:
             print("Warning: Unknown message type: {}".format(msg['type']))
 
     def onClose(self, wasClean, code, reason):
-        print("WebSocket connection closed: {0}".format(reason))
-
-    def loadState(self, jsImages, training, jsPeople):
-        self.training = training
-
-        for jsImage in jsImages:
-            h = jsImage['hash'].encode('ascii', 'ignore')
-            self.images[h] = Face(np.array(jsImage['representation']),
-                                  jsImage['identity'])
-
-        for jsPerson in jsPeople:
-            self.people.append(jsPerson.encode('ascii', 'ignore'))
-
-        if not training:
-            self.trainSVM()
-
-    def getData(self):
-        X = []
-        y = []
-        for img in self.images.values():
-            X.append(img.rep)
-            y.append(img.identity)
-
-        numIdentities = len(set(y + [-1])) - 1
-        if numIdentities == 0:
-            return None
-
-        if args.unknown:
-            numUnknown = y.count(-1)
-            numIdentified = len(y) - numUnknown
-            numUnknownAdd = (numIdentified / numIdentities) - numUnknown
-            if numUnknownAdd > 0:
-                print("+ Augmenting with {} unknown images.".format(numUnknownAdd))
-                for rep in self.unknownImgs[:numUnknownAdd]:
-                    # print(rep)
-                    X.append(rep)
-                    y.append(-1)
-
-        X = np.vstack(X)
-        y = np.array(y)
-        return (X, y)
-
-    def sendTSNE(self, people):
-        d = self.getData()
-        if d is None:
-            return
-        else:
-            (X, y) = d
-
-        X_pca = PCA(n_components=50).fit_transform(X, X)
-        tsne = TSNE(n_components=2, init='random', random_state=0)
-        X_r = tsne.fit_transform(X_pca)
-
-        yVals = list(np.unique(y))
-        colors = cm.rainbow(np.linspace(0, 1, len(yVals)))
-
-        # print(yVals)
-
-        plt.figure()
-        for c, i in zip(colors, yVals):
-            name = "Unknown" if i == -1 else people[i]
-            plt.scatter(X_r[y == i, 0], X_r[y == i, 1], c=c, label=name)
-            plt.legend()
-
-        imgdata = StringIO.StringIO()
-        plt.savefig(imgdata, format='png')
-        imgdata.seek(0)
-
-        content = 'data:image/png;base64,' + \
-                  urllib.quote(base64.b64encode(imgdata.buf))
-        msg = {
-            "type": "TSNE_DATA",
-            "content": content
-        }
-        self.sendMessage(json.dumps(msg))
-
-    def trainSVM(self):
-        print("+ Training SVM on {} labeled images.".format(len(self.images)))
-        d = self.getData()
-        if d is None:
-            self.svm = None
-            return
-        else:
-            (X, y) = d
-            numIdentities = len(set(y + [-1]))
-            if numIdentities <= 1:
-                return
-
-            param_grid = [
-                {'C': [1, 10, 100, 1000],
-                 'kernel': ['linear']},
-                {'C': [1, 10, 100, 1000],
-                 'gamma': [0.001, 0.0001],
-                 'kernel': ['rbf']}
-            ]
-            self.svm = GridSearchCV(SVC(C=1), param_grid, cv=5).fit(X, y)
-
-    def processFrame(self, dataURL, identity):
+        print("WebSocket connection closed: {0}".format(reason))    
+    
+    def processFrame(self, dataURL):
         head = "data:image/jpeg;base64,"
         assert(dataURL.startswith(head))
         imgdata = base64.b64decode(dataURL[len(head):])
@@ -294,101 +188,48 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         rgbFrame[:, :, 1] = buf[:, :, 1]
         rgbFrame[:, :, 2] = buf[:, :, 0]
 
-        if not self.training:
-            annotatedFrame = np.copy(buf)
+        annotatedFrame = np.copy(buf)
 
         # cv2.imshow('frame', rgbFrame)
         # if cv2.waitKey(1) & 0xFF == ord('q'):
         #     return
+        confidenceList = []
+        persons, confidences, bbs = infer(rgbFrame, args)
+        print ("P: " + str(persons) + " C: " + str(confidences))
+        try:
+            # append with two floating point precision
+            confidenceList.append('%.2f' % confidences[0])
+        except:
+            # If there is no face detected, confidences matrix will be empty.
+            # We can simply ignore it.
+            pass
 
-        identities = []
-        # bbs = align.getAllFaceBoundingBoxes(rgbFrame)
-        bb = align.getLargestFaceBoundingBox(rgbFrame)
-        bbs = [bb] if bb is not None else []
-        for bb in bbs:
-            # print(len(bbs))
-            landmarks = align.findLandmarks(rgbFrame, bb)
-            alignedFace = align.align(args.imgDim, rgbFrame, bb,
-                                      landmarks=landmarks,
-                                      landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
-            if alignedFace is None:
-                continue
+        for i, c in enumerate(confidences):
+            if c <= args.threshold:  # 0.7 is kept as threshold for known face.
+                persons[i] = "_unknown"
 
-            phash = str(imagehash.phash(Image.fromarray(alignedFace)))
-            if phash in self.images:
-                identity = self.images[phash].identity
-            else:
-                rep = net.forward(alignedFace)
-                # print(rep)
-                if self.training:
-                    self.images[phash] = Face(rep, identity)
-                    # TODO: Transferring as a string is suboptimal.
-                    # content = [str(x) for x in cv2.resize(alignedFace, (0,0),
-                    # fx=0.5, fy=0.5).flatten()]
-                    content = [str(x) for x in alignedFace.flatten()]
-                    msg = {
-                        "type": "NEW_IMAGE",
-                        "hash": phash,
-                        "content": content,
-                        "identity": identity,
-                        "representation": rep.tolist()
-                    }
-                    self.sendMessage(json.dumps(msg))
-                else:
-                    if len(self.people) == 0:
-                        identity = -1
-                    elif len(self.people) == 1:
-                        identity = 0
-                    elif self.svm:
-                        identity = self.svm.predict(rep)[0]
-                    else:
-                        print("hhh")
-                        identity = -1
-                    if identity not in identities:
-                        identities.append(identity)
+        # Print the person name and conf value on the frame next to the person
+        # Also print the bounding box
+        for idx,person in enumerate(persons):
+            cv2.rectangle(annotatedFrame, (bbs[idx].left(), bbs[idx].top()), (bbs[idx].right(), bbs[idx].bottom()), (0, 255, 0), 2)
+            cv2.putText(annotatedFrame, "{} @{:.2f}".format(person, confidences[idx]),
+                        (bbs[idx].left(), bbs[idx].bottom()+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        plt.figure()
+        plt.imshow(annotatedFrame)
+        plt.xticks([])
+        plt.yticks([])
 
-            if not self.training:
-                bl = (bb.left(), bb.bottom())
-                tr = (bb.right(), bb.top())
-                cv2.rectangle(annotatedFrame, bl, tr, color=(153, 255, 204),
-                              thickness=3)
-                for p in openface.AlignDlib.OUTER_EYES_AND_NOSE:
-                    cv2.circle(annotatedFrame, center=landmarks[p], radius=3,
-                               color=(102, 204, 255), thickness=-1)
-                if identity == -1:
-                    if len(self.people) == 1:
-                        name = self.people[0]
-                    else:
-                        name = "Unknown"
-                else:
-                    name = self.people[identity]
-                cv2.putText(annotatedFrame, name, (bb.left(), bb.top() - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.75,
-                            color=(152, 255, 204), thickness=2)
-
-        if not self.training:
-            msg = {
-                "type": "IDENTITIES",
-                "identities": identities
-            }
-            self.sendMessage(json.dumps(msg))
-
-            plt.figure()
-            plt.imshow(annotatedFrame)
-            plt.xticks([])
-            plt.yticks([])
-
-            imgdata = StringIO.StringIO()
-            plt.savefig(imgdata, format='png')
-            imgdata.seek(0)
-            content = 'data:image/png;base64,' + \
-                urllib.quote(base64.b64encode(imgdata.buf))
-            msg = {
-                "type": "ANNOTATED",
-                "content": content
-            }
-            plt.close()
-            self.sendMessage(json.dumps(msg))
+        imgdata = StringIO.StringIO()
+        plt.savefig(imgdata, format='png')
+        imgdata.seek(0)
+        content = 'data:image/png;base64,' + \
+            urllib.quote(base64.b64encode(imgdata.buf))
+        msg = {
+            "type": "ANNOTATED",
+            "content": content
+        }
+        plt.close()
+        self.sendMessage(json.dumps(msg))
 
 
 def mkdir(emplid):
@@ -406,6 +247,98 @@ def mkdir(emplid):
             print("folder has already existed!")
             return True
 
+def getRep(bgrImg):
+    start = time.time()
+    if bgrImg is None:
+        raise Exception("Unable to load image/frame")
+
+    rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
+
+    if args.verbose:
+        print("  + Original size: {}".format(rgbImg.shape))
+    if args.verbose:
+        print("Loading the image took {} seconds.".format(time.time() - start))
+
+    start = time.time()
+
+    # Get the largest face bounding box
+    # bb = align.getLargestFaceBoundingBox(rgbImg) #Bounding box
+
+    # Get all bounding boxes
+    bb = align.getAllFaceBoundingBoxes(rgbImg)
+
+    if bb is None:
+        # raise Exception("Unable to find a face: {}".format(imgPath))
+        return None
+    if args.verbose:
+        print("Face detection took {} seconds.".format(time.time() - start))
+
+    start = time.time()
+
+    alignedFaces = []
+    for box in bb:
+        alignedFaces.append(
+            align.align(
+                args.imgDim,
+                rgbImg,
+                box,
+                landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE))
+
+    if alignedFaces is None:
+        raise Exception("Unable to align the frame")
+    if args.verbose:
+        print("Alignment took {} seconds.".format(time.time() - start))
+
+    start = time.time()
+
+    reps = []
+    for alignedFace in alignedFaces:
+        reps.append(net.forward(alignedFace))
+
+    if args.verbose:
+        print("Neural network forward pass took {} seconds.".format(
+            time.time() - start))
+
+    # print (reps)
+    return (reps,bb)
+
+
+def infer(img, args):
+    with open(args.classifierModel, 'r') as f:
+        if sys.version_info[0] < 3:
+                (le, clf) = pickle.load(f)  # le - label and clf - classifer
+        else:
+                (le, clf) = pickle.load(f, encoding='latin1')  # le - label and clf - classifer
+
+    repsAndBBs = getRep(img)
+    reps = repsAndBBs[0]
+    bbs = repsAndBBs[1]
+    persons = []
+    confidences = []
+    for rep in reps:
+        try:
+            rep = rep.reshape(1, -1)
+        except:
+            print ("No Face detected")
+            return (None, None)
+        start = time.time()
+        predictions = clf.predict_proba(rep).ravel()
+        # print (predictions)
+        maxI = np.argmax(predictions)
+        # max2 = np.argsort(predictions)[-3:][::-1][1]
+        persons.append(le.inverse_transform(maxI))
+        # print (str(le.inverse_transform(max2)) + ": "+str( predictions [max2]))
+        # ^ prints the second prediction
+        confidences.append(predictions[maxI])
+        if args.verbose:
+            print("Prediction took {} seconds.".format(time.time() - start))
+            pass
+        # print("Predict {} with {:.2f} confidence.".format(person.decode('utf-8'), confidence))
+        if isinstance(clf, GMM):
+            dist = np.linalg.norm(rep - clf.means_[maxI])
+            print("  + Distance from the mean: {}".format(dist))
+            pass
+    return (persons, confidences ,bbs)
 
 def main(reactor):
     log.startLogging(sys.stdout)
@@ -416,5 +349,5 @@ def main(reactor):
     return defer.Deferred()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':    
     task.react(main)

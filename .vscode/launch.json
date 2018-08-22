@@ -7,7 +7,15 @@
         {
             "type": "chrome",
             "request": "launch",
-            "name": "Launch Chrome",
+            "name": "FaceClock-Launch Chrome",
+            "url": "http://localhost:8080",
+            "webRoot": "${workspaceFolder}",
+            "file": "${workspaceFolder}/demos/web/cqrcbfaceclock.html"
+        },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "ImageCon-Launch Chrome",
             "url": "http://localhost:8080",
             "webRoot": "${workspaceFolder}",
             "file": "${workspaceFolder}/demos/web/index_cqrcb.html"

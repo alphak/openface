@@ -3,17 +3,17 @@ sudo python2 setup.py install
 #get openface models
 models/get-models.sh
 #crop data
-./util/align-dlib.py ./testdata/ align outerEyesAndNose ./testdata_crop/
+./util/align-dlib.py ~/cqrcb_empl/ align outerEyesAndNose ~/cqrcb_crop/
 
 #gen feature of faces
-./batch-represent/main.lua -outDir ./testdata_features -data ./testdata_crop/
+./batch-represent/main.lua -outDir ~/cqrcb_feat -data ~/cqrcb_crop/
 
 #train
-./demos/classifier.py train ./testdata_features/
+./demos/classifier.py train ~/cqrcb_feat/
 
 
 #reconfg
-./demos/classifier.py infer ./testdata_features/classifier.pkl ws_test_data/{test6,test7}/*.jpg
+./demos/classifier.py infer ~/cqrcb_feat/classifier.pkl ws_test_data/{test6,test7}/*.jpg
 
 #webcam 
-./demos/classifier_webcam.py ./testdata_features/classifier.pkl
+./demos/classifier_webcam.py ~/cqrcb_feat/classifier.pkl
