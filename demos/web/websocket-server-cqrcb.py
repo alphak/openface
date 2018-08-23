@@ -213,7 +213,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         for idx,person in enumerate(persons):
             cv2.rectangle(annotatedFrame, (bbs[idx].left(), bbs[idx].top()), (bbs[idx].right(), bbs[idx].bottom()), (0, 255, 0), 2)
             cv2.putText(annotatedFrame, "{} @{:.2f}".format(person, confidences[idx]),
-                        (bbs[idx].left(), bbs[idx].bottom()+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                        (bbs[idx].left(), bbs[idx].bottom()+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         plt.figure()
         plt.imshow(annotatedFrame)
         plt.xticks([])
