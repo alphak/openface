@@ -19,6 +19,7 @@ from matplotlib import cm
 fileDir = os.path.dirname(os.path.realpath(__file__))
 modelDir = os.path.join(fileDir, '..', 'models')
 dlibModelDir = os.path.join(modelDir, 'dlib')
+openfaceModelDir = os.path.join(modelDir, 'openface')
 
 
 def getRep(bgrImg):
@@ -158,7 +159,7 @@ if __name__ == '__main__':
         '--networkModel',
         type=str,
         help="Path to Torch network model.",
-        default='nn4.small2.3d.v1.t7')
+        default=os.path.join(openfaceModelDir,"nn4.small2.3d.v1.t7"))
     # Download the 3D model from:
     # https://storage.cmusatyalab.org/openface-models/nn4.small2.3d.v1.t7
     parser.add_argument('--imgDim', type=int,
@@ -276,7 +277,7 @@ if __name__ == '__main__':
         beta = 1. - alpha
         cv2.putText(sphere, "CMU OpenFace", (50, 30),
                     cv2.FONT_HERSHEY_COMPLEX_SMALL, 2.,
-                    (0, 0, 0), 1, cv2.cv.CV_AA)
+                    (0, 0, 0), 1)
         cv2.addWeighted(frame, alpha, sphere, beta, 0.0, frame)
         cv2.imshow('video', frame)
 
