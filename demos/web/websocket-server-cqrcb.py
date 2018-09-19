@@ -79,9 +79,9 @@ parser.add_argument('--unknown', type=bool, default=False,
                     help='Try to predict unknown people')
 parser.add_argument('--port', type=int, default=9000,
                     help='WebSocket Port')
-parser.add_argument('--width', type=int, default=400)
-parser.add_argument('--height', type=int, default=300)
-parser.add_argument('--threshold', type=float, default=0.7)
+parser.add_argument('--width', type=int, default=800)
+parser.add_argument('--height', type=int, default=600)
+parser.add_argument('--threshold', type=float, default=0.8)
 parser.add_argument(
         '--classifierModel',
         type=str,
@@ -93,13 +93,19 @@ args = parser.parse_args()
 
 align = openface.AlignDlib(args.dlibFacePredictor)
 net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,
+                              cuda=args.cuda)align = openface.AlignDlib(args.dlibFacePredictor)
+net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,
                               cuda=args.cuda)
 
-class Face:
+class ClockInfo:
 
-    def __init__(self, rep, identity):
-        self.rep = rep
-        self.identity = identity
+    def __init__(self, emplId, emplName,department,dateStr,clockInTime,clockOutTime):
+        self.emplId = emplId
+        self.emplName = emplName
+        self.department = department
+        self.dateStr = dateStr
+        self.clockInTime = clockInTime
+        self,clockOutTime = clockOutTime
 
     def __repr__(self):
         return "{{id: {}, rep[0:5]: {}}}".format(

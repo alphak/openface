@@ -11,6 +11,7 @@
             "url": "http://localhost:8080",
             "webRoot": "${workspaceFolder}",
             "file": "${workspaceFolder}/demos/web/cqrcbfaceclock.html"
+            // "file": "${workspaceFolder}/demos/web/cqrcb/index.html"
         },
         {
             "type": "chrome",

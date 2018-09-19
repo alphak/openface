@@ -40,7 +40,7 @@ limitations under the License.
                 </li>
             </ul>
             <div id='tab-preview' class='tab-content'>
-                <video id="videoel" width="400" height="300" muted autoplay preload="auto" loop></video>
+                <video id="videoel" width="800" height="600" muted autoplay preload="auto" loop></video>
             </div>
             <div id='tab-annotated' class='tab-content current'>            
                 <div id="detectedFaces"></div>
@@ -130,12 +130,15 @@ limitations under the License.
             </table>
             <script id="peopleTableTmpl" type="text/x-handlebars-template">
                 <thead>
+                    <caption>签到信息表</caption>
                     <tr>
-                        <th>当前未签到信息表</th>
-                        <!--    <th>Unknown</th> -->
-                    <!--    {{#each people}}
-                        <th>{{this}}</th>
-                        {{/each}}-->
+                        <th>#</th>
+                        <th>员工号</th>
+                        <th>姓名</th>
+                        <th>中心</th>
+                        <th>日期</th>
+                        <th>签到时间</th>
+                        <th>签退时间</th>
                     </tr>
                 </thead>
 
@@ -177,20 +180,6 @@ limitations under the License.
 <script type="text/javascript">
     registerHbarsHelpers();
 
-    function makeTabActive(id) {
-        //class "current" define some display styles in  css/main.css
-        //these codes change its display attribute
-        $('ul.tabs li').removeClass('current');
-        $('.tab-content').removeClass('current');
-
-        $("#" + id).addClass('current');
-        $("#" + id + "-button").addClass('current');
-    }
-
-    $('ul.tabs li').click(function () {
-        makeTabActive($(this).attr('data-tab'));
-    });
-
     var vid = document.getElementById('videoel');
     var vidReady = false;
     //var defaultPersonTmpl = Handlebars.compile($("#defaultPersonTmpl").html()),
@@ -202,9 +191,6 @@ limitations under the License.
         defaultImgThreshold = 50;//the maxmum img number of a single person
     var numNulls, sentTimes, receivedTimes;
     var socket, socketName;
-
-    //$("#trainingChk").bootstrapToggle('off');
-    //$("#peopleInVideo").html("");
 
     if (navigator.mediaDevices.getUserMedia) {
         var videoSelector = {

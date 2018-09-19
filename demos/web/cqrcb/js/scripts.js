@@ -1,19 +1,3 @@
-/*
-Copyright 2015-2016 Carnegie Mellon University
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 navigator.getUserMedia = navigator.getUserMedia ||
     navigator.webkitGetUserMedia ||
     (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ?
@@ -26,6 +10,10 @@ window.URL = window.URL ||
     window.webkitURL ||
     window.msURL ||
     window.mozURL;
+/*
+hwd:here we define a function of our own in jquery's name space "fn" ,
+whose name is "pressEnter",
+*/
 
 function registerHbarsHelpers() {
     // http://stackoverflow.com/questions/8853396
@@ -39,7 +27,6 @@ function registerHbarsHelpers() {
 
 
 function sendFrameLoop() {
-    console.log("sendFrameLoop");
     if (socket == null || socket.readyState != socket.OPEN ||
         !vidReady || numNulls != defaultNumNulls) {
         return;
@@ -57,7 +44,8 @@ function sendFrameLoop() {
 
         var msg = {
             'type': 'FRAME',
-            'dataURL': dataURL
+            'dataURL': dataURL,
+            'identity': defaultPerson
         };
         socket.send(JSON.stringify(msg));
         tok--;
@@ -68,44 +56,7 @@ function sendFrameLoop() {
 }
 
 
-function getPeopleInfoHtml() {
-    // var info = {
-    //     '-1': 0
-    // };
-    // var len = people.length;
-    // for (var i = 0; i < len; i++) {
-    //     info[i] = 0;
-    // }
 
-    // var len = images.length;
-    // for (var i = 0; i < len; i++) {
-    //     id = images[i].identity;
-    //     info[id] += 1;
-    // }
-
-    // var h = "<li><b>Unknown:</b> " + info['-1'] + "</li>";
-    // var len = people.length;
-    // for (var i = 0; i < len; i++) {
-    //     h += "<li><b>" + people[i] + ":</b> " + info[i] + "</li>";
-    // }
-    var h = "<li><b>当前未签到信息表</b></li>";
-    return h;
-}
-
-function redrawPeople() {
-    var context = {
-        employeeId: "",
-        imageCache: ""
-    };
-    $("#peopleTable").html(peopleTableTmpl(context));
-
-    // var context = {
-    //     people: people
-    // };
-    //$("#defaultPersonDropdown").html(defaultPersonTmpl(context));
-
-    //$("#peopleInfo").html(getPeopleInfoHtml());
-}
 
 function getDataURLFromRGB(rgb) {
     var rgbLen = rgb.length;
@@ -130,6 +81,15 @@ function getDataURLFromRGB(rgb) {
     return canvas.toDataURL("image/png");
 }
 
+
+function sendImageCache() {
+    var msg = {
+        'type': 'STORE_IMAGES',
+        'images': imageCache,
+        'employeeId': employeeId
+    };
+    socket.send(JSON.stringify(msg));
+}
 
 function createSocket(address, name) {
     socket = new WebSocket(address);
@@ -156,7 +116,8 @@ function createSocket(address, name) {
             if (numNulls == defaultNumNulls) {
                 //updateRTT();
                 //sendState();
-                sendFrameLoop();
+                //sendFrameLoop();
+                capImgs();
             } else {
                 socket.send(JSON.stringify({
                     'type': 'NULL'
@@ -165,10 +126,27 @@ function createSocket(address, name) {
             }
         } else if (j.type == "PROCESSED") {
             tok++;
+        } else if (j.type == "NEW_IMAGE") {
+            images.push({
+                hash: j.hash,
+                identity: j.identity,
+                image: getDataURLFromRGB(j.content),
+                representation: j.representation
+            });
+            redrawPeople();
         } else if (j.type == "ANNOTATED") {
             $("#detectedFaces").html(
-                "<img src='" + j['content'] + "' width='800px'></img>"
+                "<img src='" + j['content'] + "' width='430px'></img>"
             )
+        } else if (j.type == "STORE_IMAGES") {
+            var h;
+            if (j.result) {
+                h = "Images have sent to server and saved as .jpg files successfully:!!!";
+            }else{
+                h = "Images send error:!!!";
+            }
+            $("#SendResult").html(h);
+            console.log("Image save status: " + j.result);
         } else {
             console.log("Unrecognized message type: " + j.type);
         }
@@ -193,7 +171,14 @@ function umSuccess(stream) {
     }
     vid.play();
     vidReady = true;
-    sendFrameLoop();
+    //sendFrameLoop();
+
+    //capImgs(); //for test
+    //redrawPeople();
+}
+
+function redrawPeople() {
+
 }
 
 function changeServerCallback() {

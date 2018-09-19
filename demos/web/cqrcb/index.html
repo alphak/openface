@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>cqrcb face clock</title>
+
+    <meta name="description" content="Source code generated using layoutit.com">
+    <meta name="author" content="cqrcbclock">
+
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+
+  </head>
+  <body>
+
+    <div class="container-fluid">
+	<h2>CQRCB FACE CLOCK</h2>
+	<div class="row">
+		<div class="col-md-6">
+				<video id="videoel" width="400" height="300" muted autoplay preload="auto" loop></video>	
+		</div>
+		<div class="col-md-6">
+				<div id="detectedFaces"></div>
+		</div>
+	</div>
+	<div class="row">
+		<div class="col-md-12">
+				<caption>12341234</caption>
+			<table class="table">
+				<thead>
+					<tr>
+						<th>
+							#
+						</th>
+						<th>
+							员工号
+						</th>
+						<th>
+							姓名
+						</th>
+						<th>
+							中心
+						</th>
+						<th>
+							日期
+						</th>
+						<th>
+							签到时间
+						</th>
+						<th>
+							签退时间
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					<!-- <tr>
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Default
+						</td>
+					</tr>
+					<tr class="table-active">
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Approved
+						</td>
+					</tr> -->
+					<tr class="table-success">
+						<td>
+							2
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							02/04/2012
+						</td>
+						<td>
+							Declined
+						</td>
+					</tr>
+					<!-- <tr class="table-warning">
+						<td>
+							3
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							03/04/2012
+						</td>
+						<td>
+							Pending
+						</td>
+					</tr>
+					<tr class="table-danger">
+						<td>
+							4
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							04/04/2012
+						</td>
+						<td>
+							Call in to confirm
+						</td>
+					</tr> -->
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+
+    <script src="js/jquery.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+    <script src="js/scripts.js"></script>
+  </body>
+  <script type="text/javascript">
+    var vid = document.getElementById('videoel');
+    var vidReady = false;
+    //var defaultPersonTmpl = Handlebars.compile($("#defaultPersonTmpl").html()),
+    // var peopleTableTmpl = Handlebars.compile($("#peopleTableTmpl").html());
+    var defaultTok = 1,
+        defaultNumNulls = 20,
+        defaultDelayNum = 7,
+        tok = defaultTok,
+        defaultImgThreshold = 50;//the maxmum img number of a single person
+    var numNulls, sentTimes, receivedTimes;
+    var socket, socketName;
+
+    //$("#trainingChk").bootstrapToggle('off');
+    //$("#peopleInVideo").html("");
+
+    if (navigator.mediaDevices.getUserMedia) {
+        var videoSelector = {
+            video: true
+        };
+        navigator.mediaDevices.getUserMedia(videoSelector)
+            .then(umSuccess)
+            .catch(function () {
+                alert("Error fetching video from webcam");
+            });
+    } else {
+        alert("No webcam detected.");
+    }
+
+    // $("#serverBtn.btn-group > .btn").click(changeServerCallback);
+
+
+    redrawPeople();
+    // createSocket("wss://facerec.cmusatyalab.org:9000", "CMU");
+    createSocket("wss://" + window.location.hostname + ":9000", "Local");
+</script>
+</html>
