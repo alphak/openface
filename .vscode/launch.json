@@ -21,12 +21,18 @@
             "webRoot": "${workspaceFolder}",
             "file": "${workspaceFolder}/demos/web/index_cqrcb.html"
         },
+        // {
+        //     "name": "Python: Current File",
+        //     "type": "python",
+        //     "request": "launch",
+        //     "program": "${file}",
+        //     "args": ["/home/wedohz/openface/CroppedYale/","align", "outerEyesAndNose", "/home/wedohz/openface/crp_pre_process"]
+        // },
         {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
-            "args": ["/home/wedohz/openface/CroppedYale/","align", "outerEyesAndNose", "/home/wedohz/openface/crp_pre_process"]
+            "program": "${file}"
         },
         {
             "name": "Python: Attach",

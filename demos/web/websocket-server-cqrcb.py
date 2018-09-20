@@ -58,11 +58,14 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
 import openface
+import csv
 
 modelDir = os.path.join(fileDir, '..', '..', 'models')
 dlibModelDir = os.path.join(modelDir, 'dlib')
 openfaceModelDir = os.path.join(modelDir, 'openface')
 classifierFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_feat')
+# csvFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_empl')
+csv_file = os.path.join(classifierFilelDir, 'epinfo.csv')
 # For TLS connections
 tls_crt = os.path.join(fileDir, 'tls', 'server.crt')
 tls_key = os.path.join(fileDir, 'tls', 'server.key')
@@ -79,8 +82,8 @@ parser.add_argument('--unknown', type=bool, default=False,
                     help='Try to predict unknown people')
 parser.add_argument('--port', type=int, default=9000,
                     help='WebSocket Port')
-parser.add_argument('--width', type=int, default=800)
-parser.add_argument('--height', type=int, default=600)
+parser.add_argument('--width', type=int, default=400)
+parser.add_argument('--height', type=int, default=300)
 parser.add_argument('--threshold', type=float, default=0.8)
 parser.add_argument(
         '--classifierModel',
@@ -93,34 +96,38 @@ args = parser.parse_args()
 
 align = openface.AlignDlib(args.dlibFacePredictor)
 net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,
-                              cuda=args.cuda)align = openface.AlignDlib(args.dlibFacePredictor)
-net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,
                               cuda=args.cuda)
+
 
 class ClockInfo:
 
-    def __init__(self, emplId, emplName,department,dateStr,clockInTime,clockOutTime):
+    def __init__(self, emplId, emplName, department, date, clockInTime, clockOutTime, seq):
+        self.seq = seq
         self.emplId = emplId
         self.emplName = emplName
         self.department = department
-        self.dateStr = dateStr
+        self.date = date
         self.clockInTime = clockInTime
-        self,clockOutTime = clockOutTime
+        self.clockOutTime = clockOutTime
 
     def __repr__(self):
-        return "{{id: {}, rep[0:5]: {}}}".format(
-            str(self.identity),
-            self.rep[0:5]
+        return "{{seq: {},emplid: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}".format(
+            self.seq,
+            self.emplId,
+            self.emplName,
+            self.department,
+            self.date,
+            self.clockInTime,
+            self.clockOutTime
         )
 
 
 class OpenFaceServerProtocol(WebSocketServerProtocol):
     def __init__(self):
         super(OpenFaceServerProtocol, self).__init__()
-        # self.images = {}
-        # self.training = True
-        # self.people = []
-        # self.svm = None
+        self.clockTable = {}
+        self.lastDate = time.strftime("%Y-%m-%d", time.localtime())
+        self.today = time.strftime("%Y-%m-%d", time.localtime())
         if args.unknown:
             self.unknownImgs = np.load("./examples/web/unknown.npy")
 
@@ -136,6 +143,13 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         msg = json.loads(raw)
         print("Received {} message of length {}.".format(
             msg['type'], len(raw)))
+
+        self.today = time.strftime("%Y-%m-%d", time.localtime())
+        if self.today != self.lastDate:
+            # print current clock table,then init clock table for today
+            self.printClockTable()
+            self.initClockTable(csv_file)
+
         if msg['type'] == "NULL":
             self.sendMessage('{"type": "NULL"}')
         elif msg['type'] == "FRAME":
@@ -144,7 +158,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         elif msg['type'] == 'STORE_IMAGES':
             emplId = msg['employeeId']
             isSuc = mkdir(emplId)
-            if isSuc:              
+            if isSuc:
                 #store images in employee's folder
                 for jsImage in msg['images']:
                     dataURL = jsImage['data']
@@ -213,6 +227,22 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         for i, c in enumerate(confidences):
             if c <= args.threshold:  # 0.7 is kept as threshold for known face.
                 persons[i] = "_unknown"
+            else:
+                #emply clock in & clock out    
+                strdate = time.strftime("%Y-%m-%d", time.localtime())
+                strtime = time.strftime("%H:%M:%S", time.localtime())
+                clock_info_i = self.clockTable[persons[i]]
+                #clock in 
+                if int(strTime) >= 0 and int(strTime) <=90000:                    
+                    if clock_info_i['clockin'] == 'NaN':
+                        clock_info_i['clockin'] = strtime
+                #clock out
+                else if int(strTime) >= 153000 and int(strTime) <=235959:
+                    if clock_info_i['clockout'] == 'NaN':
+                        clock_info_i['clockout'] = strtime
+                else:#not clock time
+                    pass
+                    # self.sendMessage('{"type": "WCT"}')
 
         # Print the person name and conf value on the frame next to the person
         # Also print the bounding box
@@ -237,6 +267,36 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         plt.close()
         self.sendMessage(json.dumps(msg))
 
+    #init clock table from csv file
+    def initClockTable(self,csvfile):
+        with open(csvfile) as f:
+            rowdatas = csv.DictReader(f)
+            for row in rowdatas:
+                # data.line_num
+                # print("{}",row['emid'] row['name'] row['dep'] row['today'] row['int'] row['out'])
+                # row['date'] = time.strftime("%Y-%m-%d", time.localtime())
+                # row['clockin']='NaN'
+                # row['clockout']='NaN'
+                self.clockTable[row['emplid']] = ClockInfo(rowdatas.line_num,
+                                                            row['emplid'],
+                                                            row['emplName'],
+                                                            row['department'],
+                                                            time.strftime("%Y-%m-%d", time.localtime()),
+                                                            'NaN',
+                                                            'NaN')
+    
+    def printClockTable(self):
+        headers = ['seq', 'emplid', 'emplName', 'department', 'date', 'clockin', 'clockout']
+        with open('F:/test20180920.csv', 'w', newline='') as f:
+            # header
+            writer = csv.DictWriter(f, headers)
+            writer.writeheader()
+            # data write
+            # for key in clockTable.keys():
+            #     print(key)
+            for key, value in self.clockTable.items():
+                writer.writerow(value)
+                # print(value)        
 
 def mkdir(emplid):
     print("empl id is {}.".format(emplid))
@@ -306,7 +366,7 @@ def getRep(bgrImg):
             time.time() - start))
 
     # print (reps)
-    return (reps,bb)
+    return (reps, bb)
 
 
 def infer(img, args):
@@ -325,7 +385,7 @@ def infer(img, args):
         try:
             rep = rep.reshape(1, -1)
         except:
-            print ("No Face detected")
+            print("No Face detected")
             return (None, None)
         start = time.time()
         predictions = clf.predict_proba(rep).ravel()
@@ -344,7 +404,7 @@ def infer(img, args):
             dist = np.linalg.norm(rep - clf.means_[maxI])
             print("  + Distance from the mean: {}".format(dist))
             pass
-    return (persons, confidences ,bbs)
+    return (persons, confidences, bbs)
 
 def main(reactor):
     log.startLogging(sys.stdout)
@@ -355,5 +415,5 @@ def main(reactor):
     return defer.Deferred()
 
 
-if __name__ == '__main__':    
+if __name__ == '__main__':
     task.react(main)
