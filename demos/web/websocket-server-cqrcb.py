@@ -65,7 +65,9 @@ dlibModelDir = os.path.join(modelDir, 'dlib')
 openfaceModelDir = os.path.join(modelDir, 'openface')
 classifierFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_feat')
 # csvFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_empl')
-csv_file = os.path.join(classifierFilelDir, 'epinfo.csv')
+initSaveFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_csv')
+csv_file = os.path.join(initSaveFilelDir, 'epinfo.csv')
+
 # For TLS connections
 tls_crt = os.path.join(fileDir, 'tls', 'server.crt')
 tls_key = os.path.join(fileDir, 'tls', 'server.key')
@@ -149,17 +151,28 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
             # print current clock table,then init clock table for today
             self.printClockTable()
             self.initClockTable(csv_file)
+            self.lastDate = self.today
 
         if msg['type'] == "NULL":
             self.sendMessage('{"type": "NULL"}')
         elif msg['type'] == "FRAME":
             self.processFrame(msg['dataURL'])
-            self.sendMessage('{"type": "PROCESSED"}')                
+            self.sendMessage('{"type": "PROCESSED"}')
+        elif msg['type'] == "SYNC":
+            # send all clock info 
+            clockList = []
+            for key, value in self.clockTable.items():
+                clockList.append(value)
+            msg = {
+                "type": "SYNCDATA",
+                "data": clockList
+            }
+            self.sendMessage(json.dumps(msg))
         elif msg['type'] == 'STORE_IMAGES':
             emplId = msg['employeeId']
             isSuc = mkdir(emplId)
             if isSuc:
-                #store images in employee's folder
+                # store images in employee's folder
                 for jsImage in msg['images']:
                     dataURL = jsImage['data']
                     dataSeq = jsImage['seq']
@@ -215,7 +228,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         #     return
         confidenceList = []
         persons, confidences, bbs = infer(rgbFrame, args)
-        print ("P: " + str(persons) + " C: " + str(confidences))
+        print("P: " + str(persons) + " C: " + str(confidences))
         try:
             # append with two floating point precision
             confidenceList.append('%.2f' % confidences[0])
@@ -236,10 +249,20 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                 if int(strTime) >= 0 and int(strTime) <=90000:                    
                     if clock_info_i['clockin'] == 'NaN':
                         clock_info_i['clockin'] = strtime
+                    msg = {
+                        "type": "CLOCKIN",
+                        "data": clock_info_i
+                    }
+                    self.sendMessage(json.dumps(msg))
                 #clock out
-                else if int(strTime) >= 153000 and int(strTime) <=235959:
+                elif int(strTime) >= 153000 and int(strTime) <=235959:
                     if clock_info_i['clockout'] == 'NaN':
                         clock_info_i['clockout'] = strtime
+                    msg = {
+                        "type": "CLOCKOUT",
+                        "data": clock_info_i
+                    }
+                    self.sendMessage(json.dumps(msg))
                 else:#not clock time
                     pass
                     # self.sendMessage('{"type": "WCT"}')
@@ -268,7 +291,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         self.sendMessage(json.dumps(msg))
 
     #init clock table from csv file
-    def initClockTable(self,csvfile):
+    def initClockTable(self, csvfile):
         with open(csvfile) as f:
             rowdatas = csv.DictReader(f)
             for row in rowdatas:
@@ -287,7 +310,8 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
     
     def printClockTable(self):
         headers = ['seq', 'emplid', 'emplName', 'department', 'date', 'clockin', 'clockout']
-        with open('F:/test20180920.csv', 'w', newline='') as f:
+        csv_save_file = os.path.join(initSaveFilelDir, self.lastDate+"print.csv")
+        with open(csv_save_file, 'w', newline='') as f:
             # header
             writer = csv.DictWriter(f, headers)
             writer.writeheader()
