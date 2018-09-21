@@ -44,7 +44,7 @@ function sendFrameLoop() {
         !vidReady || numNulls != defaultNumNulls) {
         return;
     }
-   
+
     if (tok > 0) {
         var canvas = document.createElement('canvas');
         canvas.width = vid.width;
@@ -68,43 +68,37 @@ function sendFrameLoop() {
 }
 
 
-function getPeopleInfoHtml() {
-    // var info = {
-    //     '-1': 0
-    // };
-    // var len = people.length;
-    // for (var i = 0; i < len; i++) {
-    //     info[i] = 0;
-    // }
+function sendSyncData() {
+    console.log("sendSyncData");
+    if (socket == null || socket.readyState != socket.OPEN ||
+        !vidReady || numNulls != defaultNumNulls) {
+        return;
+    }
+    var msg = {
+        'type': 'SYNC'
+    };
+    socket.send(JSON.stringify(msg));
+    setTimeout(function () {
+        requestAnimFrame(sendSyncData)
+    }, 2000);
+}
 
-    // var len = images.length;
-    // for (var i = 0; i < len; i++) {
-    //     id = images[i].identity;
-    //     info[id] += 1;
-    // }
 
-    // var h = "<li><b>Unknown:</b> " + info['-1'] + "</li>";
-    // var len = people.length;
-    // for (var i = 0; i < len; i++) {
-    //     h += "<li><b>" + people[i] + ":</b> " + info[i] + "</li>";
-    // }
-    var h = "<li><b>当前未签到信息表</b></li>";
+function getPeopleInfoHtml(clock_info) {
+    var h = "<ul><li><b>员工号：" + clock_info['emplid'] + "</b></li>";
+    h += "<li><b>姓名：" + clock_info['emplName'] + "</b></li>";
+    h += "<li><b>中心：" + clock_info['department'] + "</b></li>";
+    h += "<li><b>日期：" + clock_info['date'] + "</b></li>";
+    h += "<li><b>签到时间：" + clock_info['clockin'] + "</b></li>";
+    h += "<li><b>签退时间：" + clock_info['clockout'] + "</b></li></ul>";
     return h;
 }
 
 function redrawPeople() {
     var context = {
-        employeeId: "",
-        imageCache: ""
+        data: clockList
     };
     $("#peopleTable").html(peopleTableTmpl(context));
-
-    // var context = {
-    //     people: people
-    // };
-    //$("#defaultPersonDropdown").html(defaultPersonTmpl(context));
-
-    //$("#peopleInfo").html(getPeopleInfoHtml());
 }
 
 function getDataURLFromRGB(rgb) {
@@ -141,7 +135,6 @@ function createSocket(address, name) {
         receivedTimes = [];
         tok = defaultTok;
         numNulls = 0
-
         socket.send(JSON.stringify({
             'type': 'NULL'
         }));
@@ -154,8 +147,6 @@ function createSocket(address, name) {
             receivedTimes.push(new Date());
             numNulls++;
             if (numNulls == defaultNumNulls) {
-                //updateRTT();
-                //sendState();
                 sendFrameLoop();
             } else {
                 socket.send(JSON.stringify({
@@ -167,8 +158,16 @@ function createSocket(address, name) {
             tok++;
         } else if (j.type == "ANNOTATED") {
             $("#detectedFaces").html(
-                "<img src='" + j['content'] + "' width='800px'></img>"
+                "<img src='" + j['content'] + "' width='430px'></img>"
             )
+        } else if (j.type == "SYNCDATA") {
+            // receive server clockList
+            clockList = [];
+            clockList = j.data;
+            redrawPeople();
+        } else if (j.type == "CLOCK") {
+            $("#peopleInVideo").html(getPeopleInfoHtml(j.data));
+            sendSyncData();
         } else {
             console.log("Unrecognized message type: " + j.type);
         }

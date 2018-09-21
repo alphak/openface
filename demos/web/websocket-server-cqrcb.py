@@ -63,9 +63,9 @@ import csv
 modelDir = os.path.join(fileDir, '..', '..', 'models')
 dlibModelDir = os.path.join(modelDir, 'dlib')
 openfaceModelDir = os.path.join(modelDir, 'openface')
-classifierFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_feat')
+classifierFilelDir = os.path.join(fileDir, '..', '..', '..', 'cqrcb_feat')
 # csvFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_empl')
-initSaveFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_csv')
+initSaveFilelDir = os.path.join(fileDir, '..', '..', '..', 'cqrcb_csv')
 csv_file = os.path.join(initSaveFilelDir, 'epinfo.csv')
 
 # For TLS connections
@@ -73,37 +73,49 @@ tls_crt = os.path.join(fileDir, 'tls', 'server.crt')
 tls_key = os.path.join(fileDir, 'tls', 'server.key')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dlibFacePredictor', type=str, help="Path to dlib's face predictor.",
-                    default=os.path.join(dlibModelDir, "shape_predictor_68_face_landmarks.dat"))
-parser.add_argument('--networkModel', type=str, help="Path to Torch network model.",
-                    default=os.path.join(openfaceModelDir, 'nn4.small2.v1.t7'))
-parser.add_argument('--imgDim', type=int,
-                    help="Default image dimension.", default=96)
+parser.add_argument(
+    '--dlibFacePredictor',
+    type=str,
+    help="Path to dlib's face predictor.",
+    default=os.path.join(dlibModelDir, "shape_predictor_68_face_landmarks.dat"))
+parser.add_argument(
+    '--networkModel',
+    type=str,
+    help="Path to Torch network model.",
+    default=os.path.join(openfaceModelDir, 'nn4.small2.v1.t7'))
+parser.add_argument(
+    '--imgDim', type=int, help="Default image dimension.", default=96)
 parser.add_argument('--cuda', action='store_true')
-parser.add_argument('--unknown', type=bool, default=False,
-                    help='Try to predict unknown people')
-parser.add_argument('--port', type=int, default=9000,
-                    help='WebSocket Port')
+parser.add_argument(
+    '--unknown', type=bool, default=False, help='Try to predict unknown people')
+parser.add_argument('--port', type=int, default=9000, help='WebSocket Port')
 parser.add_argument('--width', type=int, default=400)
 parser.add_argument('--height', type=int, default=300)
 parser.add_argument('--threshold', type=float, default=0.8)
 parser.add_argument(
-        '--classifierModel',
-        type=str,
-        default=os.path.join(classifierFilelDir, 'classifier.pkl'),
-        help='The Python pickle representing the classifier. This is NOT the Torch network model, which can be set with --networkModel.')
+    '--classifierModel',
+    type=str,
+    default=os.path.join(classifierFilelDir, 'classifier.pkl'),
+    help=
+    'The Python pickle representing the classifier. This is NOT the Torch network model, which can be set with --networkModel.'
+)
 parser.add_argument('--verbose', action='store_true')
 
 args = parser.parse_args()
 
 align = openface.AlignDlib(args.dlibFacePredictor)
-net = openface.TorchNeuralNet(args.networkModel, imgDim=args.imgDim,
-                              cuda=args.cuda)
+net = openface.TorchNeuralNet(
+    args.networkModel, imgDim=args.imgDim, cuda=args.cuda)
+
+clockTable = {}
+yesterday = time.strftime("%Y-%m-%d", time.localtime())
+today = time.strftime("%Y-%m-%d", time.localtime())
 
 
 class ClockInfo:
 
-    def __init__(self, emplId, emplName, department, date, clockInTime, clockOutTime, seq):
+    def __init__(self,seq, emplId, emplName, department, date, clockInTime,
+                 clockOutTime):
         self.seq = seq
         self.emplId = emplId
         self.emplName = emplName
@@ -114,22 +126,59 @@ class ClockInfo:
 
     def __repr__(self):
         return "{{seq: {},emplid: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}".format(
-            self.seq,
-            self.emplId,
-            self.emplName,
-            self.department,
-            self.date,
-            self.clockInTime,
-            self.clockOutTime
-        )
+            self.seq, self.emplId, self.emplName, self.department, self.date,
+            self.clockInTime, self.clockOutTime)
+
+
+# init clock table from csv file
+def initClockTable(csvfile):
+    print("open csv file and init the clock table>>>>>>>>>>>>>>>")
+    with open(csvfile) as f:
+        rowdatas = csv.DictReader(f)
+        for row in rowdatas:
+            # data.line_num
+            # print("{}",row['emid'] row['name'] row['dep'] row['today'] row['int'] row['out'])
+            # row['date'] = time.strftime("%Y-%m-%d", time.localtime())
+            # row['clockin']='NaN'
+            # row['clockout']='NaN'
+            clockTable[row['emplid']] = ClockInfo(
+                rowdatas.line_num, row['emplid'], row['emplName'],
+                row['department'], today, 'NaN', 'NaN')
+    print("clock table:{}".format(clockTable))
+
+
+def printClockTable():
+    global clockTable
+    print(
+        "print clock table into a csv file then clock table data>>>>>>>>>>>>>>>"
+    )
+    headers = [
+        'seq', 'emplid', 'emplName', 'department', 'date', 'clockin', 'clockout'
+    ]
+    csv_save_file = os.path.join(
+        initSaveFilelDir,
+        time.strftime("%Y%m%d%H%M%S", time.localtime()) + "print.csv")
+    with open(csv_save_file, 'w', newline='') as f:
+        # header
+        writer = csv.DictWriter(f, headers)
+        writer.writeheader()
+        # data write
+        # for key in clockTable.keys():
+        #     print(key)
+        for key, value in clockTable.items():
+            writer.writerow(value)
+            # print(value)
+    # then init clockTable
+    clockTable.clear()
+
+
+initClockTable(csv_file)
 
 
 class OpenFaceServerProtocol(WebSocketServerProtocol):
+
     def __init__(self):
         super(OpenFaceServerProtocol, self).__init__()
-        self.clockTable = {}
-        self.lastDate = time.strftime("%Y-%m-%d", time.localtime())
-        self.today = time.strftime("%Y-%m-%d", time.localtime())
         if args.unknown:
             self.unknownImgs = np.load("./examples/web/unknown.npy")
 
@@ -143,15 +192,16 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
     def onMessage(self, payload, isBinary):
         raw = payload.decode('utf8')
         msg = json.loads(raw)
-        print("Received {} message of length {}.".format(
-            msg['type'], len(raw)))
+        print("Received {} message of length {}.".format(msg['type'], len(raw)))
 
-        self.today = time.strftime("%Y-%m-%d", time.localtime())
-        if self.today != self.lastDate:
+        global today
+        global yesterday
+        today = time.strftime("%Y-%m-%d", time.localtime())
+        if today != yesterday:
             # print current clock table,then init clock table for today
-            self.printClockTable()
-            self.initClockTable(csv_file)
-            self.lastDate = self.today
+            printClockTable()
+            initClockTable(csv_file)
+            yesterday = today
 
         if msg['type'] == "NULL":
             self.sendMessage('{"type": "NULL"}')
@@ -159,14 +209,11 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
             self.processFrame(msg['dataURL'])
             self.sendMessage('{"type": "PROCESSED"}')
         elif msg['type'] == "SYNC":
-            # send all clock info 
+            # send all clock info
             clockList = []
-            for key, value in self.clockTable.items():
+            for key, value in clockTable.items():
                 clockList.append(value)
-            msg = {
-                "type": "SYNCDATA",
-                "data": clockList
-            }
+            msg = {"type": "SYNCDATA", "data": clockList}
             self.sendMessage(json.dumps(msg))
         elif msg['type'] == 'STORE_IMAGES':
             emplId = msg['employeeId']
@@ -176,9 +223,11 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                 for jsImage in msg['images']:
                     dataURL = jsImage['data']
                     dataSeq = jsImage['seq']
-                    print("image of {} with seq number {} will be stored.".format(emplId,dataSeq))
+                    print(
+                        "image of {} with seq number {} will be stored.".format(
+                            emplId, dataSeq))
                     head = "data:image/jpeg;base64,"
-                    assert(dataURL.startswith(head))
+                    assert (dataURL.startswith(head))
                     imgdata = base64.b64decode(dataURL[len(head):])
                     imgF = StringIO.StringIO()
                     imgF.write(imgdata)
@@ -191,24 +240,23 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     rgbFrame[:, :, 1] = buf[:, :, 1]
                     rgbFrame[:, :, 2] = buf[:, :, 0]
                     rgbFrame[:, :, 2] = buf[:, :, 0]
-                    cv2.imwrite("../cqrcb_empl/"+str(emplId) +
-                                "/"+str(dataSeq)+".jpg", rgbFrame)
-                msg = {
-                    "type": "STORE_IMAGES",
-                    "result": isSuc
-                }
+                    cv2.imwrite(
+                        "../cqrcb_empl/" + str(emplId) + "/" + str(dataSeq) +
+                        ".jpg", rgbFrame)
+                msg = {"type": "STORE_IMAGES", "result": isSuc}
                 self.sendMessage(json.dumps(msg))
             else:
-                print("Warning:message type: {},message content is illegal".format(msg['type']))
+                print("Warning:message type: {},message content is illegal"
+                      .format(msg['type']))
         else:
             print("Warning: Unknown message type: {}".format(msg['type']))
 
     def onClose(self, wasClean, code, reason):
-        print("WebSocket connection closed: {0}".format(reason))    
-    
+        print("WebSocket connection closed: {0}".format(reason))
+
     def processFrame(self, dataURL):
         head = "data:image/jpeg;base64,"
-        assert(dataURL.startswith(head))
+        assert (dataURL.startswith(head))
         imgdata = base64.b64decode(dataURL[len(head):])
         imgF = StringIO.StringIO()
         imgF.write(imgdata)
@@ -241,38 +289,37 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
             if c <= args.threshold:  # 0.7 is kept as threshold for known face.
                 persons[i] = "_unknown"
             else:
-                #emply clock in & clock out    
-                strdate = time.strftime("%Y-%m-%d", time.localtime())
+                #emply clock in & clock out
+                # strdate = time.strftime("%Y-%m-%d", time.localtime())
                 strtime = time.strftime("%H:%M:%S", time.localtime())
-                clock_info_i = self.clockTable[persons[i]]
-                #clock in 
-                if int(strTime) >= 0 and int(strTime) <=90000:                    
-                    if clock_info_i['clockin'] == 'NaN':
-                        clock_info_i['clockin'] = strtime
-                    msg = {
-                        "type": "CLOCKIN",
-                        "data": clock_info_i
-                    }
+                strTime = time.strftime("%H%M%S", time.localtime())
+                global clockTable
+                clock_info_i = clockTable[persons[i]]
+                #clock in
+                if int(strTime) >= 0 and int(strTime) <= 90000:
+                    if clock_info_i.clockInTime == 'NaN':
+                        clock_info_i.clockInTime = strtime
+                    msg = {"type": "CLOCK", "data": clock_info_i}
                     self.sendMessage(json.dumps(msg))
                 #clock out
-                elif int(strTime) >= 153000 and int(strTime) <=235959:
-                    if clock_info_i['clockout'] == 'NaN':
-                        clock_info_i['clockout'] = strtime
-                    msg = {
-                        "type": "CLOCKOUT",
-                        "data": clock_info_i
-                    }
+                elif int(strTime) >= 153000 and int(strTime) <= 235959:
+                    if clock_info_i.clockOutTime == 'NaN':
+                        clock_info_i.clockOutTime = strtime
+                    msg = {"type": "CLOCK", "data": clock_info_i}
                     self.sendMessage(json.dumps(msg))
-                else:#not clock time
+                else:  #not clock time
                     pass
                     # self.sendMessage('{"type": "WCT"}')
 
         # Print the person name and conf value on the frame next to the person
         # Also print the bounding box
-        for idx,person in enumerate(persons):
-            cv2.rectangle(annotatedFrame, (bbs[idx].left(), bbs[idx].top()), (bbs[idx].right(), bbs[idx].bottom()), (0, 255, 0), 2)
-            cv2.putText(annotatedFrame, "{} @{:.2f}".format(person, confidences[idx]),
-                        (bbs[idx].left(), bbs[idx].bottom()+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        for idx, person in enumerate(persons):
+            cv2.rectangle(annotatedFrame, (bbs[idx].left(), bbs[idx].top()),
+                          (bbs[idx].right(), bbs[idx].bottom()), (0, 255, 0), 2)
+            cv2.putText(annotatedFrame, "{} @{:.2f}".format(
+                person,
+                confidences[idx]), (bbs[idx].left(), bbs[idx].bottom() + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         plt.figure()
         plt.imshow(annotatedFrame)
         plt.xticks([])
@@ -283,44 +330,10 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         imgdata.seek(0)
         content = 'data:image/png;base64,' + \
             urllib.quote(base64.b64encode(imgdata.buf))
-        msg = {
-            "type": "ANNOTATED",
-            "content": content
-        }
+        msg = {"type": "ANNOTATED", "content": content}
         plt.close()
         self.sendMessage(json.dumps(msg))
 
-    #init clock table from csv file
-    def initClockTable(self, csvfile):
-        with open(csvfile) as f:
-            rowdatas = csv.DictReader(f)
-            for row in rowdatas:
-                # data.line_num
-                # print("{}",row['emid'] row['name'] row['dep'] row['today'] row['int'] row['out'])
-                # row['date'] = time.strftime("%Y-%m-%d", time.localtime())
-                # row['clockin']='NaN'
-                # row['clockout']='NaN'
-                self.clockTable[row['emplid']] = ClockInfo(rowdatas.line_num,
-                                                            row['emplid'],
-                                                            row['emplName'],
-                                                            row['department'],
-                                                            time.strftime("%Y-%m-%d", time.localtime()),
-                                                            'NaN',
-                                                            'NaN')
-    
-    def printClockTable(self):
-        headers = ['seq', 'emplid', 'emplName', 'department', 'date', 'clockin', 'clockout']
-        csv_save_file = os.path.join(initSaveFilelDir, self.lastDate+"print.csv")
-        with open(csv_save_file, 'w', newline='') as f:
-            # header
-            writer = csv.DictWriter(f, headers)
-            writer.writeheader()
-            # data write
-            # for key in clockTable.keys():
-            #     print(key)
-            for key, value in self.clockTable.items():
-                writer.writerow(value)
-                # print(value)        
 
 def mkdir(emplid):
     print("empl id is {}.".format(emplid))
@@ -328,7 +341,7 @@ def mkdir(emplid):
     if not emplid:
         return False
     else:
-        foldername = "../cqrcb_empl/"+str(emplid)
+        foldername = "../cqrcb_empl/" + str(emplid)
         isCreated = os.path.exists(foldername)
         if not isCreated:
             os.makedirs(foldername)
@@ -336,6 +349,7 @@ def mkdir(emplid):
         else:
             print("folder has already existed!")
             return True
+
 
 def getRep(bgrImg):
     start = time.time()
@@ -386,8 +400,9 @@ def getRep(bgrImg):
         reps.append(net.forward(alignedFace))
 
     if args.verbose:
-        print("Neural network forward pass took {} seconds.".format(
-            time.time() - start))
+        print(
+            "Neural network forward pass took {} seconds.".format(time.time() -
+                                                                  start))
 
     # print (reps)
     return (reps, bb)
@@ -396,9 +411,10 @@ def getRep(bgrImg):
 def infer(img, args):
     with open(args.classifierModel, 'r') as f:
         if sys.version_info[0] < 3:
-                (le, clf) = pickle.load(f)  # le - label and clf - classifer
+            (le, clf) = pickle.load(f)  # le - label and clf - classifer
         else:
-                (le, clf) = pickle.load(f, encoding='latin1')  # le - label and clf - classifer
+            (le, clf) = pickle.load(
+                f, encoding='latin1')  # le - label and clf - classifer
 
     repsAndBBs = getRep(img)
     reps = repsAndBBs[0]
@@ -429,6 +445,7 @@ def infer(img, args):
             print("  + Distance from the mean: {}".format(dist))
             pass
     return (persons, confidences, bbs)
+
 
 def main(reactor):
     log.startLogging(sys.stdout)

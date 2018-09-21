@@ -47,8 +47,8 @@ limitations under the License.
             </div>
         </div>
         <div class="content">
-            <!--<h2>People in Video</h2>
-            <div id="peopleInVideo"></div>-->
+            <h2>People in Video</h2>
+            <div id="peopleInVideo"></div>
 
             <h2>Servers:
                 <span id="serverStatus"></span>
@@ -120,11 +120,11 @@ limitations under the License.
                 </ul>
 </script>-->
 
-            <!--<br/>
+            <!-- <br/>
 
             <ul id="peopleInfo"></ul>
 
-            <br/>-->
+            <br/> -->
 
             <table class="table table-striped table-hover table-condensed" id="peopleTable">
             </table>
@@ -132,7 +132,7 @@ limitations under the License.
                 <thead>
                     <caption>签到信息表</caption>
                     <tr>
-                        <th>#</th>
+                        <th>序号</th>
                         <th>员工号</th>
                         <th>姓名</th>
                         <th>中心</th>
@@ -143,25 +143,15 @@ limitations under the License.
                 </thead>
 
                 <tbody>
-                    {{#each imageCache}}
-                    <tr id="ppl_row_{{this.seq}}">
-                        <td valign='middle'>
-                            <font>
-                            <a href="javascript:removeImage('{{this.seq}}')" class='remove'>
-                                × ×
-                            </a>
-                            </font>
-                            <!--<img src="{{this.image}}" />-->
-                            <img src="{{this.data}}" />
-                        </td>
-                        <!--<td>
-                            <input type='radio' name='ppl_radio_{{this.hash}}' value="-1" {{#ifEq identity -1}} checked {{/ifEq}} onClick="updateIdentity('{{this.hash}}', -1)">
-                        </td>
-                        {{#each ../people}}
-                        <td>
-                            <input type='radio' name='ppl_radio_{{../this.hash}}' value="{{@index}}" {{#ifEq ../identity @index}} checked {{/ifEq}} onClick="updateIdentity('{{../this.hash}}', {{@index}})">
-                        </td>
- {{/each}}-->
+                    {{#each data}}
+                    <tr id="ppl_row_{{this.emplid}}">
+                        <td>{{this.seq}}</td>
+                        <td>{{this.emplid}}</td>
+                        <td>{{this.emplName}}</td>
+                        <td>{{this.department}}</td>
+                        <td>{{this.date}}</td>
+                        <td>{{this.clockin}}</td>
+                        <td>{{this.clockout}}</td>
                     </tr>
                     {{/each}}
                 </tbody>
@@ -191,6 +181,7 @@ limitations under the License.
         defaultImgThreshold = 50;//the maxmum img number of a single person
     var numNulls, sentTimes, receivedTimes;
     var socket, socketName;
+    var clockList = [];
 
     if (navigator.mediaDevices.getUserMedia) {
         var videoSelector = {
