@@ -114,20 +114,41 @@ today = time.strftime("%Y-%m-%d", time.localtime())
 
 class ClockInfo:
 
-    def __init__(self,seq, emplId, emplName, department, date, clockInTime,
-                 clockOutTime):
+    def __init__(self, seq, emplId, emplName, department, date, clockin,
+                 clockout):
         self.seq = seq
         self.emplId = emplId
         self.emplName = emplName
         self.department = department
         self.date = date
-        self.clockInTime = clockInTime
-        self.clockOutTime = clockOutTime
+        self.clockin = clockin
+        self.clockout = clockout
 
     def __repr__(self):
         return "{{seq: {},emplid: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}".format(
             self.seq, self.emplId, self.emplName, self.department, self.date,
-            self.clockInTime, self.clockOutTime)
+            self.clockin, self.clockout)
+
+    # def __repr__(self):
+    #     return {
+    #         'seq': self.seq,
+    #         'emplid': self.emplId,
+    #         'emplName': self.emplName,
+    #         'department': self.department,
+    #         'date': self.department,
+    #         'clockin': self.clockin,
+    #         'clockout': self.clockout
+    #     }
+
+    def returnMapContext(self):
+        ret = '{{seq: {},emplid: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}'.format(
+            self.seq, self.emplId, self.emplName, self.department, self.date,
+            self.clockin, self.clockout)
+        print("".format(ret))
+        return ret
+        # return "{{'seq': {},'emplid': {}, 'emplName': {},'department': {},'date': {},'clockin': {},'clockout': {}}}".format(
+        #     self.seq, self.emplId, self.emplName, self.department, self.date,
+        #     self.clockin, self.clockout)
 
 
 # init clock table from csv file
@@ -196,6 +217,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
 
         global today
         global yesterday
+        global clockTable
         today = time.strftime("%Y-%m-%d", time.localtime())
         if today != yesterday:
             # print current clock table,then init clock table for today
@@ -212,7 +234,8 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
             # send all clock info
             clockList = []
             for key, value in clockTable.items():
-                clockList.append(value)
+                # clockList.append(value.returnMapContext())
+                clockList.append(json.dumps(value,default=lambda obj:obj.__dict__,sort_keys=True,indent=4))
             msg = {"type": "SYNCDATA", "data": clockList}
             self.sendMessage(json.dumps(msg))
         elif msg['type'] == 'STORE_IMAGES':
@@ -296,16 +319,20 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                 global clockTable
                 clock_info_i = clockTable[persons[i]]
                 #clock in
-                if int(strTime) >= 0 and int(strTime) <= 90000:
-                    if clock_info_i.clockInTime == 'NaN':
-                        clock_info_i.clockInTime = strtime
-                    msg = {"type": "CLOCK", "data": clock_info_i}
+                if int(strTime) >= 0 and int(strTime) <= 152900:
+                    if clock_info_i.clockin == 'NaN':
+                        clock_info_i.clockin = strtime
+                    # msg = {"type": "CLOCKIN", "data": clock_info_i.returnMapContext()}
+                    msg = {"type": "CLOCKIN", "data": json.dumps(clock_info_i,default=lambda obj: obj.__dict__,sort_keys=True,indent=4)}
+                    print("{}".format(msg))
                     self.sendMessage(json.dumps(msg))
                 #clock out
                 elif int(strTime) >= 153000 and int(strTime) <= 235959:
-                    if clock_info_i.clockOutTime == 'NaN':
-                        clock_info_i.clockOutTime = strtime
-                    msg = {"type": "CLOCK", "data": clock_info_i}
+                    if clock_info_i.clockout == 'NaN':
+                        clock_info_i.clockout = strtime
+                    # msg = {"type": "CLOCKOUT", "data": clock_info_i.returnMapContext()}
+                    msg = {"type": "CLOCKOUT", "data": json.dumps(clock_info_i,default=lambda obj: obj.__dict__,sort_keys=True,indent=4)}
+                    print("{}".format(msg))
                     self.sendMessage(json.dumps(msg))
                 else:  #not clock time
                     pass

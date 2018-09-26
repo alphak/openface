@@ -85,7 +85,7 @@ function sendSyncData() {
 
 
 function getPeopleInfoHtml(clock_info) {
-    var h = "<ul><li><b>员工号：" + clock_info['emplid'] + "</b></li>";
+    var h = "<ul><li><b>员工号：" + clock_info['emplId'] + "</b></li>";
     h += "<li><b>姓名：" + clock_info['emplName'] + "</b></li>";
     h += "<li><b>中心：" + clock_info['department'] + "</b></li>";
     h += "<li><b>日期：" + clock_info['date'] + "</b></li>";
@@ -165,7 +165,13 @@ function createSocket(address, name) {
             clockList = [];
             clockList = j.data;
             redrawPeople();
-        } else if (j.type == "CLOCK") {
+        } else if (j.type == "CLOCKIN") {
+            console.log(j.data);
+            var context = JSON.parse(j.data);
+            $("#peopleInVideo").html(getPeopleInfoHtml(context));
+            sendSyncData();
+        } else if (j.type == "CLOCKOUT") {
+            console.log(j.data);
             $("#peopleInVideo").html(getPeopleInfoHtml(j.data));
             sendSyncData();
         } else {
