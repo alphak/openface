@@ -96,6 +96,7 @@ function getPeopleInfoHtml(clock_info) {
 
 function redrawPeople() {
     var context = {
+        // data: JSON.parse(clockList)
         data: clockList
     };
     $("#peopleTable").html(peopleTableTmpl(context));
@@ -163,7 +164,8 @@ function createSocket(address, name) {
         } else if (j.type == "SYNCDATA") {
             // receive server clockList
             clockList = [];
-            clockList = j.data;
+            clockList = JSON.parse(j.data);
+            console.log(clockList);
             redrawPeople();
         } else if (j.type == "CLOCKIN") {
             console.log(j.data);

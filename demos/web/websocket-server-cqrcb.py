@@ -235,8 +235,11 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
             clockList = []
             for key, value in clockTable.items():
                 # clockList.append(value.returnMapContext())
-                clockList.append(json.dumps(value,default=lambda obj:obj.__dict__,sort_keys=True,indent=4))
-            msg = {"type": "SYNCDATA", "data": clockList}
+            #     clockList.append(json.dumps(value,default=lambda obj:obj.__dict__,sort_keys=True,indent=4))
+            # msg = {"type": "SYNCDATA", "data": clockList}
+                clockList.append(value)
+            msg = {"type": "SYNCDATA", "data": json.dumps(clockList,default=lambda obj:obj.__dict__,sort_keys=True,indent=4)}
+            print("{}".format(msg))
             self.sendMessage(json.dumps(msg))
         elif msg['type'] == 'STORE_IMAGES':
             emplId = msg['employeeId']
