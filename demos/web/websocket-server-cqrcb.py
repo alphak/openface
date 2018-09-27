@@ -89,8 +89,8 @@ parser.add_argument('--cuda', action='store_true')
 parser.add_argument(
     '--unknown', type=bool, default=False, help='Try to predict unknown people')
 parser.add_argument('--port', type=int, default=9000, help='WebSocket Port')
-parser.add_argument('--width', type=int, default=400)
-parser.add_argument('--height', type=int, default=300)
+parser.add_argument('--width', type=int, default=800)
+parser.add_argument('--height', type=int, default=600)
 parser.add_argument('--threshold', type=float, default=0.8)
 parser.add_argument(
     '--classifierModel',
@@ -270,7 +270,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     img = Image.open(imgF)
 
                     buf = np.fliplr(np.asarray(img))
-                    rgbFrame = np.zeros((300, 400, 3), dtype=np.uint8)
+                    rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
                     rgbFrame[:, :, 0] = buf[:, :, 2]
                     rgbFrame[:, :, 1] = buf[:, :, 1]
                     rgbFrame[:, :, 2] = buf[:, :, 0]
@@ -299,7 +299,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         img = Image.open(imgF)
 
         buf = np.fliplr(np.asarray(img))
-        rgbFrame = np.zeros((300, 400, 3), dtype=np.uint8)
+        rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
         rgbFrame[:, :, 0] = buf[:, :, 2]
         rgbFrame[:, :, 1] = buf[:, :, 1]
         rgbFrame[:, :, 2] = buf[:, :, 0]
