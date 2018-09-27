@@ -235,10 +235,19 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
             clockList = []
             for key, value in clockTable.items():
                 # clockList.append(value.returnMapContext())
-            #     clockList.append(json.dumps(value,default=lambda obj:obj.__dict__,sort_keys=True,indent=4))
-            # msg = {"type": "SYNCDATA", "data": clockList}
+                #     clockList.append(json.dumps(value,default=lambda obj:obj.__dict__,sort_keys=True,indent=4))
+                # msg = {"type": "SYNCDATA", "data": clockList}
                 clockList.append(value)
-            msg = {"type": "SYNCDATA", "data": json.dumps(clockList,default=lambda obj:obj.__dict__,sort_keys=True,indent=4)}
+            msg = {
+                "type":
+                    "SYNCDATA",
+                "data":
+                    json.dumps(
+                        clockList,
+                        default=lambda obj: obj.__dict__,
+                        sort_keys=True,
+                        indent=4)
+            }
             print("{}".format(msg))
             self.sendMessage(json.dumps(msg))
         elif msg['type'] == 'STORE_IMAGES':
@@ -302,6 +311,8 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         #     return
         confidenceList = []
         persons, confidences, bbs = infer(rgbFrame, args)
+        if persons is None or confidences is None or bbs is None:
+            return
         print("P: " + str(persons) + " C: " + str(confidences))
         try:
             # append with two floating point precision
@@ -326,7 +337,16 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     if clock_info_i.clockin == 'NaN':
                         clock_info_i.clockin = strtime
                     # msg = {"type": "CLOCKIN", "data": clock_info_i.returnMapContext()}
-                    msg = {"type": "CLOCKIN", "data": json.dumps(clock_info_i,default=lambda obj: obj.__dict__,sort_keys=True,indent=4)}
+                    msg = {
+                        "type":
+                            "CLOCKIN",
+                        "data":
+                            json.dumps(
+                                clock_info_i,
+                                default=lambda obj: obj.__dict__,
+                                sort_keys=True,
+                                indent=4)
+                    }
                     print("{}".format(msg))
                     self.sendMessage(json.dumps(msg))
                 #clock out
@@ -334,7 +354,16 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     if clock_info_i.clockout == 'NaN':
                         clock_info_i.clockout = strtime
                     # msg = {"type": "CLOCKOUT", "data": clock_info_i.returnMapContext()}
-                    msg = {"type": "CLOCKOUT", "data": json.dumps(clock_info_i,default=lambda obj: obj.__dict__,sort_keys=True,indent=4)}
+                    msg = {
+                        "type":
+                            "CLOCKOUT",
+                        "data":
+                            json.dumps(
+                                clock_info_i,
+                                default=lambda obj: obj.__dict__,
+                                sort_keys=True,
+                                indent=4)
+                    }
                     print("{}".format(msg))
                     self.sendMessage(json.dumps(msg))
                 else:  #not clock time
@@ -343,13 +372,22 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
 
         # Print the person name and conf value on the frame next to the person
         # Also print the bounding box
-        for idx, person in enumerate(persons):
-            cv2.rectangle(annotatedFrame, (bbs[idx].left(), bbs[idx].top()),
-                          (bbs[idx].right(), bbs[idx].bottom()), (0, 255, 0), 2)
+        # if type(bbs).__name__ != 'list':
+        if type(bbs).__name__ != 'rectangles':
+            cv2.rectangle(annotatedFrame, (bbs.left(), bbs.top()),
+                          (bbs.right(), bbs.bottom()), (0, 255, 0), 2)
             cv2.putText(annotatedFrame, "{} @{:.2f}".format(
-                person,
-                confidences[idx]), (bbs[idx].left(), bbs[idx].bottom() + 20),
+                persons[0], confidences[0]), (bbs.left(), bbs.bottom() + 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        else:
+            for idx, person in enumerate(persons):
+                cv2.rectangle(annotatedFrame, (bbs[idx].left(), bbs[idx].top()),
+                              (bbs[idx].right(), bbs[idx].bottom()),
+                              (0, 255, 0), 2)
+                cv2.putText(annotatedFrame, "{} @{:.2f}".format(
+                    person, confidences[idx]),
+                            (bbs[idx].left(), bbs[idx].bottom() + 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         plt.figure()
         plt.imshow(annotatedFrame)
         plt.xticks([])
@@ -396,10 +434,10 @@ def getRep(bgrImg):
     start = time.time()
 
     # Get the largest face bounding box
-    # bb = align.getLargestFaceBoundingBox(rgbImg) #Bounding box
+    bb = align.getLargestFaceBoundingBox(rgbImg)  #Bounding box
 
     # Get all bounding boxes
-    bb = align.getAllFaceBoundingBoxes(rgbImg)
+    # bb = align.getAllFaceBoundingBoxes(rgbImg)
 
     if bb is None:
         # raise Exception("Unable to find a face: {}".format(imgPath))
@@ -410,13 +448,22 @@ def getRep(bgrImg):
     start = time.time()
 
     alignedFaces = []
-    for box in bb:
+    print("bb's type name is :----->" + type(bb).__name__)
+    if type(bb).__name__ == 'rectangle':
         alignedFaces.append(
             align.align(
                 args.imgDim,
                 rgbImg,
-                box,
+                bb,
                 landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE))
+    else:
+        for box in bb:
+            alignedFaces.append(
+                align.align(
+                    args.imgDim,
+                    rgbImg,
+                    box,
+                    landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE))
 
     if alignedFaces is None:
         raise Exception("Unable to align the frame")
@@ -447,6 +494,11 @@ def infer(img, args):
                 f, encoding='latin1')  # le - label and clf - classifer
 
     repsAndBBs = getRep(img)
+    print(
+        "------------------------------------------{}---------------------------------------"
+        .format(repsAndBBs))
+    if repsAndBBs is None:
+        return (None, None, None)
     reps = repsAndBBs[0]
     bbs = repsAndBBs[1]
     persons = []
@@ -456,7 +508,7 @@ def infer(img, args):
             rep = rep.reshape(1, -1)
         except:
             print("No Face detected")
-            return (None, None)
+            return (None, None, None)
         start = time.time()
         predictions = clf.predict_proba(rep).ravel()
         # print (predictions)
