@@ -80,7 +80,7 @@ function sendSyncData() {
     socket.send(JSON.stringify(msg));
     setTimeout(function () {
         requestAnimFrame(sendSyncData)
-    }, 2000);
+    }, 3000);
 }
 
 
@@ -171,11 +171,17 @@ function createSocket(address, name) {
             console.log(j.data);
             var context = JSON.parse(j.data);
             $("#peopleInVideo").html(getPeopleInfoHtml(context));
-            sendSyncData();
+            // sendSyncData();
         } else if (j.type == "CLOCKOUT") {
             console.log(j.data);
-            $("#peopleInVideo").html(getPeopleInfoHtml(j.data));
-            sendSyncData();
+            var context = JSON.parse(j.data);
+            $("#peopleInVideo").html(getPeopleInfoHtml(context));
+            // sendSyncData();
+        } else if (j.type == "CLOCKINFO") {
+            console.log(j.data);
+            var context = JSON.parse(j.data);
+            $("#peopleInVideo").html(getPeopleInfoHtml(context));
+            // sendSyncData();
         } else {
             console.log("Unrecognized message type: " + j.type);
         }
@@ -201,6 +207,7 @@ function umSuccess(stream) {
     vid.play();
     vidReady = true;
     sendFrameLoop();
+    sendSyncData();
 }
 
 function changeServerCallback() {

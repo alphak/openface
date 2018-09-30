@@ -125,7 +125,7 @@ class ClockInfo:
         self.clockout = clockout
 
     def __repr__(self):
-        return "{{seq: {},emplid: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}".format(
+        return "{{seq: {},emplId: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}".format(
             self.seq, self.emplId, self.emplName, self.department, self.date,
             self.clockin, self.clockout)
 
@@ -140,21 +140,32 @@ class ClockInfo:
     #         'clockout': self.clockout
     #     }
 
-    def returnMapContext(self):
-        ret = '{{seq: {},emplid: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}'.format(
+    def __str__(self):
+        ret = '{{seq: {},emplId: {}, emplName: {},department: {},date: {},clockin: {},clockout: {}}}'.format(
             self.seq, self.emplId, self.emplName, self.department, self.date,
             self.clockin, self.clockout)
-        print("".format(ret))
         return ret
         # return "{{'seq': {},'emplid': {}, 'emplName': {},'department': {},'date': {},'clockin': {},'clockout': {}}}".format(
         #     self.seq, self.emplId, self.emplName, self.department, self.date,
         #     self.clockin, self.clockout)
 
+    def dictObj(self):
+        return {
+            'seq': self.seq,
+            'emplId': self.emplId,
+            'emplName': self.department,
+            'department': self.department,
+            'date': self.date,
+            'clockin': self.clockin,
+            'clockout': self.clockout
+        }
+
 
 # init clock table from csv file
 def initClockTable(csvfile):
+    global clockTable
     print("open csv file and init the clock table>>>>>>>>>>>>>>>")
-    with open(csvfile) as f:
+    with open(csvfile, 'rb') as f:
         rowdatas = csv.DictReader(f)
         for row in rowdatas:
             # data.line_num
@@ -162,24 +173,25 @@ def initClockTable(csvfile):
             # row['date'] = time.strftime("%Y-%m-%d", time.localtime())
             # row['clockin']='NaN'
             # row['clockout']='NaN'
-            clockTable[row['emplid']] = ClockInfo(
-                rowdatas.line_num, row['emplid'], row['emplName'],
+            clockTable[row['emplId']] = ClockInfo(
+                rowdatas.line_num, row['emplId'], row['emplName'],
                 row['department'], today, 'NaN', 'NaN')
-    print("clock table:{}".format(clockTable))
+            print("clock table:{}".format(clockTable[row['emplId']].dictObj()))
 
 
 def printClockTable():
     global clockTable
-    print(
-        "print clock table into a csv file then clock table data>>>>>>>>>>>>>>>"
-    )
+    global yesterday
+    print("print clock table into a csv file!!!!")
     headers = [
-        'seq', 'emplid', 'emplName', 'department', 'date', 'clockin', 'clockout'
+        'seq', 'emplId', 'emplName', 'department', 'date', 'clockin', 'clockout'
     ]
     csv_save_file = os.path.join(
         initSaveFilelDir,
-        time.strftime("%Y%m%d%H%M%S", time.localtime()) + "print.csv")
-    with open(csv_save_file, 'w', newline='') as f:
+        yesterday + "clockres.csv")
+    print(csv_save_file)
+    # with open(csv_save_file, 'w', newline='') as f:
+    with open(csv_save_file, 'wb') as f:
         # header
         writer = csv.DictWriter(f, headers)
         writer.writeheader()
@@ -187,7 +199,8 @@ def printClockTable():
         # for key in clockTable.keys():
         #     print(key)
         for key, value in clockTable.items():
-            writer.writerow(value)
+            # writer.writerow(value)
+            writer.writerow(value.dictObj())
             # print(value)
     # then init clockTable
     clockTable.clear()
@@ -270,7 +283,9 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     img = Image.open(imgF)
 
                     buf = np.fliplr(np.asarray(img))
-                    rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
+                    # rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
+                    rgbFrame = np.zeros((args.height, args.width, 3),
+                                        dtype=np.uint8)
                     rgbFrame[:, :, 0] = buf[:, :, 2]
                     rgbFrame[:, :, 1] = buf[:, :, 1]
                     rgbFrame[:, :, 2] = buf[:, :, 0]
@@ -299,7 +314,8 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
         img = Image.open(imgF)
 
         buf = np.fliplr(np.asarray(img))
-        rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
+        # rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
+        rgbFrame = np.zeros((args.height, args.width, 3), dtype=np.uint8)
         rgbFrame[:, :, 0] = buf[:, :, 2]
         rgbFrame[:, :, 1] = buf[:, :, 1]
         rgbFrame[:, :, 2] = buf[:, :, 0]
@@ -329,14 +345,12 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                 #emply clock in & clock out
                 # strdate = time.strftime("%Y-%m-%d", time.localtime())
                 strtime = time.strftime("%H:%M:%S", time.localtime())
-                strTime = time.strftime("%H%M%S", time.localtime())
+                # strTime = time.strftime("%H%M%S", time.localtime())
                 global clockTable
                 clock_info_i = clockTable[persons[i]]
-                #clock in
-                if int(strTime) >= 0 and int(strTime) <= 152900:
-                    if clock_info_i.clockin == 'NaN':
-                        clock_info_i.clockin = strtime
-                    # msg = {"type": "CLOCKIN", "data": clock_info_i.returnMapContext()}
+                #clock
+                if clock_info_i.clockin == 'NaN':
+                    clock_info_i.clockin = strtime
                     msg = {
                         "type":
                             "CLOCKIN",
@@ -349,11 +363,8 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     }
                     print("{}".format(msg))
                     self.sendMessage(json.dumps(msg))
-                #clock out
-                elif int(strTime) >= 153000 and int(strTime) <= 235959:
-                    if clock_info_i.clockout == 'NaN':
-                        clock_info_i.clockout = strtime
-                    # msg = {"type": "CLOCKOUT", "data": clock_info_i.returnMapContext()}
+                elif clock_info_i.clockout == 'NaN':
+                    clock_info_i.clockout = strtime
                     msg = {
                         "type":
                             "CLOCKOUT",
@@ -366,9 +377,55 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     }
                     print("{}".format(msg))
                     self.sendMessage(json.dumps(msg))
-                else:  #not clock time
-                    pass
-                    # self.sendMessage('{"type": "WCT"}')
+                else:
+                    msg = {
+                        "type":
+                            "CLOCKINFO",
+                        "data":
+                            json.dumps(
+                                clock_info_i,
+                                default=lambda obj: obj.__dict__,
+                                sort_keys=True,
+                                indent=4)
+                    }
+                    print("{}".format(msg))
+                    self.sendMessage(json.dumps(msg))
+                clockTable[persons[i]] = clock_info_i
+                # if int(strTime) >= 0 and int(strTime) <= 152900:
+                #     if clock_info_i.clockin == 'NaN':
+                #         clock_info_i.clockin = strtime
+                #     # msg = {"type": "CLOCKIN", "data": clock_info_i.returnMapContext()}
+                #     msg = {
+                #         "type":
+                #             "CLOCKIN",
+                #         "data":
+                #             json.dumps(
+                #                 clock_info_i,
+                #                 default=lambda obj: obj.__dict__,
+                #                 sort_keys=True,
+                #                 indent=4)
+                #     }
+                #     print("{}".format(msg))
+                #     self.sendMessage(json.dumps(msg))
+                # #clock out
+                # elif int(strTime) >= 153000 and int(strTime) <= 235959:
+                #     if clock_info_i.clockout == 'NaN':
+                #         clock_info_i.clockout = strtime
+                #     # msg = {"type": "CLOCKOUT", "data": clock_info_i.returnMapContext()}
+                #     msg = {
+                #         "type":
+                #             "CLOCKOUT",
+                #         "data":
+                #             json.dumps(
+                #                 clock_info_i,
+                #                 default=lambda obj: obj.__dict__,
+                #                 sort_keys=True,
+                #                 indent=4)
+                #     }
+                #     print("{}".format(msg))
+                #     self.sendMessage(json.dumps(msg))
+                # else:  #not clock time
+                #     pass
 
         # Print the person name and conf value on the frame next to the person
         # Also print the bounding box
