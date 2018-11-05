@@ -159,7 +159,7 @@ function createSocket(address, name) {
             tok++;
         } else if (j.type == "ANNOTATED") {
             $("#detectedFaces").html(
-                "<img src='" + j['content'] + "' width='800px' height='600px'></img>"
+                "<img src='" + j['content'] + "' width='400px' height='300px'></img>"
             )
         } else if (j.type == "SYNCDATA") {
             // receive server clockList

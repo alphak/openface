@@ -89,8 +89,8 @@ parser.add_argument('--cuda', action='store_true')
 parser.add_argument(
     '--unknown', type=bool, default=False, help='Try to predict unknown people')
 parser.add_argument('--port', type=int, default=9000, help='WebSocket Port')
-parser.add_argument('--width', type=int, default=800)
-parser.add_argument('--height', type=int, default=600)
+parser.add_argument('--width', type=int, default=400)
+parser.add_argument('--height', type=int, default=300)
 parser.add_argument('--threshold', type=float, default=0.8)
 parser.add_argument(
     '--classifierModel',
@@ -345,11 +345,11 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                 #emply clock in & clock out
                 # strdate = time.strftime("%Y-%m-%d", time.localtime())
                 strtime = time.strftime("%H:%M:%S", time.localtime())
-                # strTime = time.strftime("%H%M%S", time.localtime())
+                strTime = time.strftime("%H%M%S", time.localtime())
                 global clockTable
                 clock_info_i = clockTable[persons[i]]
                 #clock
-                if clock_info_i.clockin == 'NaN':
+                if clock_info_i.clockin == 'NaN' and clock_info_i.clockout == 'NaN':
                     clock_info_i.clockin = strtime
                     msg = {
                         "type":
@@ -363,7 +363,7 @@ class OpenFaceServerProtocol(WebSocketServerProtocol):
                     }
                     print("{}".format(msg))
                     self.sendMessage(json.dumps(msg))
-                elif clock_info_i.clockout == 'NaN':
+                elif clock_info_i.clockout == 'NaN' and int(strTime) >= 173000 and int(strTime) <= 235959:
                     clock_info_i.clockout = strtime
                     msg = {
                         "type":
