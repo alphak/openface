@@ -1,0 +1,562 @@
+#!/usr/bin/env python2
+# #
+# Copyright 2015-2016 Carnegie Mellon University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import time
+
+start = time.time()
+
+import os
+import pickle
+import sys
+fileDir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.join(fileDir, "..", ".."))
+
+import txaio
+txaio.use_twisted()
+
+from autobahn.twisted.websocket import WebSocketServerProtocol, \
+    WebSocketServerFactory
+from twisted.internet import task, defer
+from twisted.internet.ssl import DefaultOpenSSLContextFactory
+
+from twisted.python import log
+
+import argparse
+import cv2
+import imagehash
+import json
+from PIL import Image
+import numpy as np
+np.set_printoptions(precision=2)
+import os
+import StringIO
+import urllib
+import base64
+
+from sklearn.decomposition import PCA
+from sklearn.grid_search import GridSearchCV
+from sklearn.manifold import TSNE
+from sklearn.svm import SVC
+from sklearn.mixture import GMM
+
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+import openface
+import csv
+
+modelDir = os.path.join(fileDir, '..', '..', 'models')
+dlibModelDir = os.path.join(modelDir, 'dlib')
+openfaceModelDir = os.path.join(modelDir, 'openface')
+classifierFilelDir = os.path.join(fileDir, '..', '..', '..', 'cqrcb_feat')
+# csvFilelDir = os.path.join(fileDir, '..','..','..','cqrcb_empl')
+initSaveFilelDir = os.path.join(fileDir, '..', '..', '..', 'cqrcb_csv')
+csv_file = os.path.join(initSaveFilelDir, 'staffs.csv')
+
+# For TLS connections
+tls_crt = os.path.join(fileDir, 'tls', 'server.crt')
+tls_key = os.path.join(fileDir, 'tls', 'server.key')
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    '--dlibFacePredictor',
+    type=str,
+    help="Path to dlib's face predictor.",
+    default=os.path.join(dlibModelDir, "shape_predictor_68_face_landmarks.dat"))
+parser.add_argument(
+    '--networkModel',
+    type=str,
+    help="Path to Torch network model.",
+    default=os.path.join(openfaceModelDir, 'nn4.small2.v1.t7'))
+parser.add_argument(
+    '--imgDim', type=int, help="Default image dimension.", default=96)
+parser.add_argument('--cuda', action='store_true')
+parser.add_argument(
+    '--unknown', type=bool, default=False, help='Try to predict unknown people')
+parser.add_argument('--port', type=int, default=9000, help='WebSocket Port')
+parser.add_argument('--width', type=int, default=400)
+parser.add_argument('--height', type=int, default=300)
+parser.add_argument('--threshold', type=float, default=0.8)
+parser.add_argument(
+    '--classifierModel',
+    type=str,
+    default=os.path.join(classifierFilelDir, 'classifier.pkl'),
+    help=
+    'The Python pickle representing the classifier. This is NOT the Torch network model, which can be set with --networkModel.'
+)
+parser.add_argument('--verbose', action='store_true')
+
+args = parser.parse_args()
+
+align = openface.AlignDlib(args.dlibFacePredictor)
+net = openface.TorchNeuralNet(
+    args.networkModel, imgDim=args.imgDim, cuda=args.cuda)
+
+clockTable = {}
+yesterday = time.strftime("%Y-%m-%d", time.localtime())
+today = time.strftime("%Y-%m-%d", time.localtime())
+
+
+class ClockInfo:
+
+    def __init__(self, seq, emplId, emplName, department, date, breakfast,
+                 lunch,supper):
+        self.seq = seq
+        self.emplId = emplId
+        self.emplName = emplName
+        self.department = department
+        self.date = date
+        self.breakfast = breakfast
+        self.lunch = lunch
+        self.supper = supper
+
+    def __repr__(self):
+        return "{{seq: {},emplId: {}, emplName: {},department: {},date: {},breakfast: {},lunch: {},supper: {}}}".format(
+            self.seq, self.emplId, self.emplName, self.department, self.date,
+            self.breakfast, self.lunch, self.supper)
+
+
+    def __str__(self):
+        ret = '{{seq: {},emplId: {}, emplName: {},department: {},date: {},breakfast: {},lunch: {},supper: {}}}'.format(
+            self.seq, self.emplId, self.emplName, self.department, self.date,
+            self.breakfast, self.lunch, self.supper)
+        return ret
+
+    def dictObj(self):
+        return {
+            'seq': self.seq,
+            'emplId': self.emplId,
+            'emplName': self.department,
+            'department': self.department,
+            'date': self.date,
+            'breakfast': self.breakfast,
+            'lunch': self.lunch,
+            'supper': self.supper
+        }
+
+
+# init clock table from csv file
+def initClockTable(csvfile):
+    global clockTable
+    print("open csv file and init the clock table>>>>>>>>>>>>>>>")
+    with open(csvfile, 'rb') as f:
+        rowdatas = csv.DictReader(f)
+        for row in rowdatas:
+            clockTable[row['emplId']] = ClockInfo(
+                rowdatas.line_num, row['emplId'], row['emplName'],
+                row['department'], today, 'NaN', 'NaN', 'NaN')
+            print("clock table:{}".format(clockTable[row['emplId']].dictObj()))
+
+
+def printClockTable():
+    global clockTable
+    global yesterday
+    print("print clock table into a csv file!!!!")
+    headers = [
+        'seq', 'emplId', 'emplName', 'department', 'date', 'breakfast', 'lunch', 'supper'
+    ]
+    csv_save_file = os.path.join(
+        initSaveFilelDir,
+        yesterday + "staffs_breakfast_lunch_supper.csv")
+    print(csv_save_file)
+    # with open(csv_save_file, 'w', newline='') as f:
+    with open(csv_save_file, 'wb') as f:
+        # header
+        writer = csv.DictWriter(f, headers)
+        writer.writeheader()
+        # data write
+        # for key in clockTable.keys():
+        #     print(key)
+        for key, value in clockTable.items():
+            # writer.writerow(value)
+            writer.writerow(value.dictObj())
+            # print(value)
+    # then init clockTable
+    clockTable.clear()
+
+
+initClockTable(csv_file)
+
+
+class OpenFaceServerProtocol(WebSocketServerProtocol):
+
+    def __init__(self):
+        super(OpenFaceServerProtocol, self).__init__()
+        if args.unknown:
+            self.unknownImgs = np.load("./examples/web/unknown.npy")
+
+    def onConnect(self, request):
+        print("Client connecting: {0}".format(request.peer))
+        # self.training = True
+
+    def onOpen(self):
+        print("WebSocket connection open.")
+
+    def onMessage(self, payload, isBinary):
+        raw = payload.decode('utf8')
+        msg = json.loads(raw)
+        print("Received {} message of length {}.".format(msg['type'], len(raw)))
+
+        global today
+        global yesterday
+        global clockTable
+        today = time.strftime("%Y-%m-%d", time.localtime())
+        if today != yesterday:
+            # print current clock table,then init clock table for today
+            printClockTable()
+            initClockTable(csv_file)
+            yesterday = today
+
+        if msg['type'] == "NULL":
+            self.sendMessage('{"type": "NULL"}')
+        elif msg['type'] == "FRAME":
+            self.processFrame(msg['dataURL'])
+            self.sendMessage('{"type": "PROCESSED"}')
+        elif msg['type'] == "SYNC":
+            # send all clock info
+            clockList = []
+            for key, value in clockTable.items():
+                # clockList.append(value.returnMapContext())
+                #     clockList.append(json.dumps(value,default=lambda obj:obj.__dict__,sort_keys=True,indent=4))
+                # msg = {"type": "SYNCDATA", "data": clockList}
+                clockList.append(value)
+            msg = {
+                "type":
+                    "SYNCDATA",
+                "data":
+                    json.dumps(
+                        clockList,
+                        default=lambda obj: obj.__dict__,
+                        sort_keys=True,
+                        indent=4)
+            }
+            print("{}".format(msg))
+            self.sendMessage(json.dumps(msg))
+        elif msg['type'] == 'STORE_IMAGES':
+            emplId = msg['employeeId']
+            isSuc = mkdir(emplId)
+            if isSuc:
+                # store images in employee's folder
+                for jsImage in msg['images']:
+                    dataURL = jsImage['data']
+                    dataSeq = jsImage['seq']
+                    print(
+                        "image of {} with seq number {} will be stored.".format(
+                            emplId, dataSeq))
+                    head = "data:image/jpeg;base64,"
+                    assert (dataURL.startswith(head))
+                    imgdata = base64.b64decode(dataURL[len(head):])
+                    imgF = StringIO.StringIO()
+                    imgF.write(imgdata)
+                    imgF.seek(0)
+                    img = Image.open(imgF)
+
+                    buf = np.fliplr(np.asarray(img))
+                    # rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
+                    rgbFrame = np.zeros((args.height, args.width, 3),
+                                        dtype=np.uint8)
+                    rgbFrame[:, :, 0] = buf[:, :, 2]
+                    rgbFrame[:, :, 1] = buf[:, :, 1]
+                    rgbFrame[:, :, 2] = buf[:, :, 0]
+                    rgbFrame[:, :, 2] = buf[:, :, 0]
+                    cv2.imwrite(
+                        "../cqrcb_empl/" + str(emplId) + "/" + str(dataSeq) +
+                        ".jpg", rgbFrame)
+                msg = {"type": "STORE_IMAGES", "result": isSuc}
+                self.sendMessage(json.dumps(msg))
+            else:
+                print("Warning:message type: {},message content is illegal"
+                      .format(msg['type']))
+        else:
+            print("Warning: Unknown message type: {}".format(msg['type']))
+
+    def onClose(self, wasClean, code, reason):
+        print("WebSocket connection closed: {0}".format(reason))
+
+    def processFrame(self, dataURL):
+        head = "data:image/jpeg;base64,"
+        assert (dataURL.startswith(head))
+        imgdata = base64.b64decode(dataURL[len(head):])
+        imgF = StringIO.StringIO()
+        imgF.write(imgdata)
+        imgF.seek(0)
+        img = Image.open(imgF)
+
+        buf = np.fliplr(np.asarray(img))
+        # rgbFrame = np.zeros((600, 800, 3), dtype=np.uint8)
+        rgbFrame = np.zeros((args.height, args.width, 3), dtype=np.uint8)
+        rgbFrame[:, :, 0] = buf[:, :, 2]
+        rgbFrame[:, :, 1] = buf[:, :, 1]
+        rgbFrame[:, :, 2] = buf[:, :, 0]
+
+        annotatedFrame = np.copy(buf)
+
+        # cv2.imshow('frame', rgbFrame)
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     return
+        confidenceList = []
+        persons, confidences, bbs = infer(rgbFrame, args)
+        if persons is None or confidences is None or bbs is None:
+            return
+        print("P: " + str(persons) + " C: " + str(confidences))
+        try:
+            # append with two floating point precision
+            confidenceList.append('%.2f' % confidences[0])
+        except:
+            # If there is no face detected, confidences matrix will be empty.
+            # We can simply ignore it.
+            pass
+
+        for i, c in enumerate(confidences):
+            if c <= args.threshold:  # 0.7 is kept as threshold for known face.
+                persons[i] = "_unknown"
+            else:
+                #emply clock in & clock out
+                # strdate = time.strftime("%Y-%m-%d", time.localtime())
+                strtime = time.strftime("%H:%M:%S", time.localtime())
+                strTime = time.strftime("%H%M%S", time.localtime())
+                global clockTable
+                clock_info_i = clockTable[persons[i]]
+                #clock
+                if clock_info_i.breakfast == 'NaN' and int(strTime) > 50000 and int(strTime) < 90000:
+                    clock_info_i.breakfast = strtime
+                    msg = {
+                        "type":
+                            "CLOCKINFO",
+                        "data":
+                            json.dumps(
+                                clock_info_i,
+                                default=lambda obj: obj.__dict__,
+                                sort_keys=True,
+                                indent=4)
+                    }
+                    print("{}".format(msg))
+                    self.sendMessage(json.dumps(msg))
+                elif clock_info_i.lunch == 'NaN' and int(strTime) > 113000 and int(strTime) < 133000:
+                    clock_info_i.lunch = strtime
+                    msg = {
+                        "type":
+                            "CLOCKINFO",
+                        "data":
+                            json.dumps(
+                                clock_info_i,
+                                default=lambda obj: obj.__dict__,
+                                sort_keys=True,
+                                indent=4)
+                    }
+                    print("{}".format(msg))
+                    self.sendMessage(json.dumps(msg))
+                elif clock_info_i.supper == 'NaN' and int(strTime) > 173000 and int(strTime) < 235959:
+                    clock_info_i.supper = strtime
+                    msg = {
+                        "type":
+                            "CLOCKINFO",
+                        "data":
+                            json.dumps(
+                                clock_info_i,
+                                default=lambda obj: obj.__dict__,
+                                sort_keys=True,
+                                indent=4)
+                    }
+                    print("{}".format(msg))
+                    self.sendMessage(json.dumps(msg))
+                else:
+                    msg = {
+                        "type":
+                            "CLOCKINFO",
+                        "data":
+                            json.dumps(
+                                clock_info_i,
+                                default=lambda obj: obj.__dict__,
+                                sort_keys=True,
+                                indent=4)
+                    }
+                    print("{}".format(msg))
+                    self.sendMessage(json.dumps(msg))
+                clockTable[persons[i]] = clock_info_i
+
+        # Print the person name and conf value on the frame next to the person
+        # Also print the bounding box
+        # if type(bbs).__name__ != 'list':
+        if type(bbs).__name__ != 'rectangles':
+            cv2.rectangle(annotatedFrame, (bbs.left(), bbs.top()),
+                          (bbs.right(), bbs.bottom()), (0, 255, 0), 2)
+            cv2.putText(annotatedFrame, "{} @{:.2f}".format(
+                persons[0], confidences[0]), (bbs.left(), bbs.bottom() + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        else:
+            for idx, person in enumerate(persons):
+                cv2.rectangle(annotatedFrame, (bbs[idx].left(), bbs[idx].top()),
+                              (bbs[idx].right(), bbs[idx].bottom()),
+                              (0, 255, 0), 2)
+                cv2.putText(annotatedFrame, "{} @{:.2f}".format(
+                    person, confidences[idx]),
+                            (bbs[idx].left(), bbs[idx].bottom() + 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        plt.figure()
+        plt.imshow(annotatedFrame)
+        plt.xticks([])
+        plt.yticks([])
+
+        imgdata = StringIO.StringIO()
+        plt.savefig(imgdata, format='png')
+        imgdata.seek(0)
+        content = 'data:image/png;base64,' + \
+            urllib.quote(base64.b64encode(imgdata.buf))
+        msg = {"type": "ANNOTATED", "content": content}
+        plt.close()
+        self.sendMessage(json.dumps(msg))
+
+
+def mkdir(emplid):
+    print("empl id is {}.".format(emplid))
+    print("current file dir is {} .".format(fileDir))
+    if not emplid:
+        return False
+    else:
+        foldername = "../cqrcb_empl/" + str(emplid)
+        isCreated = os.path.exists(foldername)
+        if not isCreated:
+            os.makedirs(foldername)
+            return True
+        else:
+            print("folder has already existed!")
+            return True
+
+
+def getRep(bgrImg):
+    start = time.time()
+    if bgrImg is None:
+        raise Exception("Unable to load image/frame")
+
+    rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
+
+    if args.verbose:
+        print("  + Original size: {}".format(rgbImg.shape))
+    if args.verbose:
+        print("Loading the image took {} seconds.".format(time.time() - start))
+
+    start = time.time()
+
+    # Get the largest face bounding box
+    bb = align.getLargestFaceBoundingBox(rgbImg)  #Bounding box
+
+    # Get all bounding boxes
+    # bb = align.getAllFaceBoundingBoxes(rgbImg)
+
+    if bb is None:
+        # raise Exception("Unable to find a face: {}".format(imgPath))
+        return None
+    if args.verbose:
+        print("Face detection took {} seconds.".format(time.time() - start))
+
+    start = time.time()
+
+    alignedFaces = []
+    print("bb's type name is :----->" + type(bb).__name__)
+    if type(bb).__name__ == 'rectangle':
+        alignedFaces.append(
+            align.align(
+                args.imgDim,
+                rgbImg,
+                bb,
+                landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE))
+    else:
+        for box in bb:
+            alignedFaces.append(
+                align.align(
+                    args.imgDim,
+                    rgbImg,
+                    box,
+                    landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE))
+
+    if alignedFaces is None:
+        raise Exception("Unable to align the frame")
+    if args.verbose:
+        print("Alignment took {} seconds.".format(time.time() - start))
+
+    start = time.time()
+
+    reps = []
+    for alignedFace in alignedFaces:
+        reps.append(net.forward(alignedFace))
+
+    if args.verbose:
+        print(
+            "Neural network forward pass took {} seconds.".format(time.time() -
+                                                                  start))
+
+    # print (reps)
+    return (reps, bb)
+
+
+def infer(img, args):
+    with open(args.classifierModel, 'r') as f:
+        if sys.version_info[0] < 3:
+            (le, clf) = pickle.load(f)  # le - label and clf - classifer
+        else:
+            (le, clf) = pickle.load(
+                f, encoding='latin1')  # le - label and clf - classifer
+
+    repsAndBBs = getRep(img)
+    print(
+        "------------------------------------------{}---------------------------------------"
+        .format(repsAndBBs))
+    if repsAndBBs is None:
+        return (None, None, None)
+    reps = repsAndBBs[0]
+    bbs = repsAndBBs[1]
+    persons = []
+    confidences = []
+    for rep in reps:
+        try:
+            rep = rep.reshape(1, -1)
+        except:
+            print("No Face detected")
+            return (None, None, None)
+        start = time.time()
+        predictions = clf.predict_proba(rep).ravel()
+        # print (predictions)
+        maxI = np.argmax(predictions)
+        # max2 = np.argsort(predictions)[-3:][::-1][1]
+        persons.append(le.inverse_transform(maxI))
+        # print (str(le.inverse_transform(max2)) + ": "+str( predictions [max2]))
+        # ^ prints the second prediction
+        confidences.append(predictions[maxI])
+        if args.verbose:
+            print("Prediction took {} seconds.".format(time.time() - start))
+            pass
+        # print("Predict {} with {:.2f} confidence.".format(person.decode('utf-8'), confidence))
+        if isinstance(clf, GMM):
+            dist = np.linalg.norm(rep - clf.means_[maxI])
+            print("  + Distance from the mean: {}".format(dist))
+            pass
+    return (persons, confidences, bbs)
+
+
+def main(reactor):
+    log.startLogging(sys.stdout)
+    factory = WebSocketServerFactory()
+    factory.protocol = OpenFaceServerProtocol
+    ctx_factory = DefaultOpenSSLContextFactory(tls_key, tls_crt)
+    reactor.listenSSL(args.port, factory, ctx_factory)
+    return defer.Deferred()
+
+
+if __name__ == '__main__':
+    task.react(main)
